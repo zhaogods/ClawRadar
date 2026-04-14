@@ -10,3 +10,12 @@ __pycache__/
 
 # Local rerun artifacts; keep checked-in stage10 baseline evidence files.
 project_protocol/stage10/demo_runs/*/20*-*/
+
+# Local notes and protocol/docs kept out of the published repo.
+findings.md
+progress.md
+task_plan.md
+run_openclaw_deliverable.py
+使用.md
+project_protocol/
+openclaw-doc/
