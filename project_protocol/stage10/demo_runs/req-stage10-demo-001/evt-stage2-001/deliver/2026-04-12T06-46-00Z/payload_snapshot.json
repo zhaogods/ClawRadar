@@ -1,0 +1,288 @@
+{
+  "request_id": "req-stage10-demo-001",
+  "event_id": "evt-stage2-001",
+  "trigger_source": "manual",
+  "decision_status": "publish_ready",
+  "normalized_events": [
+    {
+      "request_id": "req-stage10-demo-001",
+      "event_id": "evt-stage2-001",
+      "event_title": "OpenAI 发布企业级智能体协作平台",
+      "company": "OpenAI",
+      "event_time": "2026-04-09T08:00:00Z",
+      "source_url": "https://example.com/openai-agents-platform",
+      "source_type": "news",
+      "raw_excerpt": "平台支持多智能体任务编排、审计日志与企业级权限控制。",
+      "initial_tags": [
+        "AI",
+        "企业服务",
+        "智能体"
+      ],
+      "confidence": 0.96,
+      "timeline_candidates": [
+        {
+          "timestamp": "2026-04-08T22:00:00Z",
+          "label": "preview",
+          "summary": "发布前预告披露将上线多智能体企业协作能力",
+          "source_url": "https://example.com/openai-agents-preview",
+          "source_type": "blog"
+        },
+        {
+          "timestamp": "2026-04-09T08:30:00Z",
+          "label": "market_feedback",
+          "summary": "首批合作客户确认已开始试点接入",
+          "source_url": "https://example.com/openai-agents-customer",
+          "source_type": "interview"
+        }
+      ],
+      "fact_candidates": [
+        {
+          "fact_id": "fact-stage2-001",
+          "claim": "平台包含多智能体任务编排能力",
+          "source_url": "https://example.com/openai-agents-platform",
+          "confidence": 0.95,
+          "citation_excerpt": "支持跨任务编排与执行监控。"
+        },
+        {
+          "fact_id": "fact-stage2-002",
+          "claim": "产品提供企业权限与审计日志",
+          "source_url": "https://example.com/openai-agents-platform-security",
+          "confidence": 0.91,
+          "citation_excerpt": "管理员可查看访问日志与角色授权。"
+        },
+        {
+          "fact_id": "fact-stage2-003",
+          "claim": "已有首批企业客户进入试点",
+          "source_url": "https://example.com/openai-agents-customer",
+          "confidence": 0.88,
+          "citation_excerpt": "合作客户在发布当天确认试点计划。"
+        }
+      ],
+      "status": "accepted"
+    }
+  ],
+  "timeline": [
+    {
+      "timestamp": "2026-04-08T22:00:00Z",
+      "label": "preview",
+      "summary": "发布前预告披露将上线多智能体企业协作能力",
+      "source_url": "https://example.com/openai-agents-preview",
+      "source_type": "blog"
+    },
+    {
+      "timestamp": "2026-04-09T08:00:00Z",
+      "label": "candidate_detected",
+      "summary": "OpenAI 发布企业级智能体协作平台",
+      "source_url": "https://example.com/openai-agents-platform",
+      "source_type": "news"
+    },
+    {
+      "timestamp": "2026-04-09T08:30:00Z",
+      "label": "market_feedback",
+      "summary": "首批合作客户确认已开始试点接入",
+      "source_url": "https://example.com/openai-agents-customer",
+      "source_type": "interview"
+    }
+  ],
+  "evidence_pack": {
+    "core_claim": "OpenAI 发布企业级智能体协作平台",
+    "source_support": [
+      {
+        "fact_id": "fact-stage2-001",
+        "claim": "平台包含多智能体任务编排能力",
+        "source_url": "https://example.com/openai-agents-platform",
+        "confidence": 0.95,
+        "citation_excerpt": "支持跨任务编排与执行监控。",
+        "uncertainty": ""
+      },
+      {
+        "fact_id": "fact-stage2-002",
+        "claim": "产品提供企业权限与审计日志",
+        "source_url": "https://example.com/openai-agents-platform-security",
+        "confidence": 0.91,
+        "citation_excerpt": "管理员可查看访问日志与角色授权。",
+        "uncertainty": ""
+      },
+      {
+        "fact_id": "fact-stage2-003",
+        "claim": "已有首批企业客户进入试点",
+        "source_url": "https://example.com/openai-agents-customer",
+        "confidence": 0.88,
+        "citation_excerpt": "合作客户在发布当天确认试点计划。",
+        "uncertainty": "待补充交叉验证"
+      }
+    ],
+    "timeline_support": [
+      {
+        "timestamp": "2026-04-08T22:00:00Z",
+        "label": "preview",
+        "summary": "发布前预告披露将上线多智能体企业协作能力",
+        "source_url": "https://example.com/openai-agents-preview"
+      },
+      {
+        "timestamp": "2026-04-09T08:00:00Z",
+        "label": "candidate_detected",
+        "summary": "OpenAI 发布企业级智能体协作平台",
+        "source_url": "https://example.com/openai-agents-platform"
+      },
+      {
+        "timestamp": "2026-04-09T08:30:00Z",
+        "label": "market_feedback",
+        "summary": "首批合作客户确认已开始试点接入",
+        "source_url": "https://example.com/openai-agents-customer"
+      }
+    ],
+    "risk_notes": [],
+    "uncertainty_markers": [
+      "待补充交叉验证"
+    ]
+  },
+  "scorecard": {
+    "dimensions": [
+      {
+        "dimension": "timeliness",
+        "score": 20,
+        "weight": 20
+      },
+      {
+        "dimension": "evidence_strength",
+        "score": 28,
+        "weight": 30
+      },
+      {
+        "dimension": "novelty",
+        "score": 12,
+        "weight": 15
+      },
+      {
+        "dimension": "business_relevance",
+        "score": 18,
+        "weight": 20
+      },
+      {
+        "dimension": "execution_readiness",
+        "score": 15,
+        "weight": 15
+      }
+    ],
+    "total_score": 93,
+    "decision_status": "publish_ready"
+  },
+  "content_bundle": {
+    "event_id": "evt-stage2-001",
+    "content_status": "generated",
+    "title": {
+      "text": "OpenAI热点追踪：OpenAI 发布企业级智能体协作平台",
+      "version": 1
+    },
+    "outline": [
+      {
+        "section_id": "lead",
+        "heading": "事件概览",
+        "purpose": "说明事件是什么、何时发生、为什么值得关注。",
+        "evidence_refs": [
+          "fact-stage2-001",
+          "fact-stage2-002"
+        ]
+      },
+      {
+        "section_id": "evidence",
+        "heading": "证据与时间线",
+        "purpose": "按时间线梳理关键来源与已确认事实。",
+        "evidence_refs": [
+          "fact-stage2-001",
+          "fact-stage2-002",
+          "fact-stage2-003"
+        ]
+      },
+      {
+        "section_id": "impact",
+        "heading": "AI、企业服务、智能体影响判断",
+        "purpose": "结合业务相关性说明潜在影响，并保留不确定性提示。",
+        "evidence_refs": []
+      }
+    ],
+    "draft": {
+      "version": 1,
+      "label": "初稿",
+      "body_markdown": "初稿：OpenAI热点追踪：OpenAI 发布企业级智能体协作平台\n\nOpenAI相关事件已达到 publish_ready 门槛。当前可确认的核心信息是：平台包含多智能体任务编排能力（来源：https://example.com/openai-agents-platform）。\n\n从现有证据看，事件推进节奏较快，时间线已覆盖检测、披露与市场反馈环节。补充事实显示：产品提供企业权限与审计日志（来源：https://example.com/openai-agents-platform-security）。若引用原文，可优先采用“支持跨任务编排与执行监控。”作为证据摘录。\n\n影响判断上，该事件与业务相关性较高，但仍需同步提示：待补充交叉验证",
+      "source_refs": [
+        "fact-stage2-001",
+        "fact-stage2-002",
+        "fact-stage2-003"
+      ],
+      "uncertainty_markers": [
+        "待补充交叉验证"
+      ]
+    },
+    "summary": {
+      "version": 1,
+      "text": "摘要：OpenAI 发布企业级智能体协作平台。已确认事实包括“平台包含多智能体任务编排能力”，来源为 https://example.com/openai-agents-platform；使用时需保留提示：待补充交叉验证",
+      "source_refs": [
+        "fact-stage2-001",
+        "fact-stage2-002"
+      ],
+      "uncertainty_markers": [
+        "待补充交叉验证"
+      ]
+    },
+    "evidence_pack": {
+      "core_claim": "OpenAI 发布企业级智能体协作平台",
+      "source_support": [
+        {
+          "fact_id": "fact-stage2-001",
+          "claim": "平台包含多智能体任务编排能力",
+          "source_url": "https://example.com/openai-agents-platform",
+          "confidence": 0.95,
+          "citation_excerpt": "支持跨任务编排与执行监控。",
+          "uncertainty": ""
+        },
+        {
+          "fact_id": "fact-stage2-002",
+          "claim": "产品提供企业权限与审计日志",
+          "source_url": "https://example.com/openai-agents-platform-security",
+          "confidence": 0.91,
+          "citation_excerpt": "管理员可查看访问日志与角色授权。",
+          "uncertainty": ""
+        },
+        {
+          "fact_id": "fact-stage2-003",
+          "claim": "已有首批企业客户进入试点",
+          "source_url": "https://example.com/openai-agents-customer",
+          "confidence": 0.88,
+          "citation_excerpt": "合作客户在发布当天确认试点计划。",
+          "uncertainty": "待补充交叉验证"
+        }
+      ],
+      "timeline_support": [
+        {
+          "timestamp": "2026-04-08T22:00:00Z",
+          "label": "preview",
+          "summary": "发布前预告披露将上线多智能体企业协作能力",
+          "source_url": "https://example.com/openai-agents-preview"
+        },
+        {
+          "timestamp": "2026-04-09T08:00:00Z",
+          "label": "candidate_detected",
+          "summary": "OpenAI 发布企业级智能体协作平台",
+          "source_url": "https://example.com/openai-agents-platform"
+        },
+        {
+          "timestamp": "2026-04-09T08:30:00Z",
+          "label": "market_feedback",
+          "summary": "首批合作客户确认已开始试点接入",
+          "source_url": "https://example.com/openai-agents-customer"
+        }
+      ],
+      "risk_notes": [],
+      "uncertainty_markers": [
+        "待补充交叉验证"
+      ]
+    }
+  },
+  "delivery_request": {
+    "delivery_time": "2026-04-12T06:46:00Z",
+    "delivery_channel": "archive_only",
+    "delivery_target": "archive://stage10-demo"
+  }
+}

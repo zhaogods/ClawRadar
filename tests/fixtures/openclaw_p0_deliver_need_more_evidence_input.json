@@ -1,0 +1,216 @@
+{
+  "request_id": "req-stage4-002",
+  "trigger_source": "manual",
+  "decision_status": "need_more_evidence",
+  "delivery_channel": "feishu",
+  "delivery_target": "feishu://chat/openclaw-review",
+  "normalized_events": [
+    {
+      "request_id": "req-stage4-002",
+      "event_id": "evt-stage4-002",
+      "event_title": "某行业热点仅有单一来源讨论",
+      "event_time": "2026-04-09T09:00:00Z",
+      "source_url": "https://example.com/single-source-topic",
+      "source_type": "forum",
+      "company": "",
+      "initial_tags": ["行业热点", "单一来源"]
+    }
+  ],
+  "timeline": [
+    {
+      "timestamp": "2026-04-09T09:00:00Z",
+      "label": "candidate_detected",
+      "summary": "某行业热点仅有单一来源讨论",
+      "source_url": "https://example.com/single-source-topic",
+      "source_type": "forum"
+    }
+  ],
+  "evidence_pack": {
+    "core_claim": "某行业热点仅有单一来源讨论",
+    "source_support": [
+      {
+        "fact_id": "fact-stage4-101",
+        "claim": "单一论坛帖子提到行业热点变化",
+        "source_url": "https://example.com/single-source-topic",
+        "confidence": 0.62,
+        "citation_excerpt": "论坛帖子提到可能出现新的趋势。",
+        "uncertainty": "待补充交叉验证"
+      }
+    ],
+    "timeline_support": [
+      {
+        "timestamp": "2026-04-09T09:00:00Z",
+        "label": "candidate_detected",
+        "summary": "某行业热点仅有单一来源讨论",
+        "source_url": "https://example.com/single-source-topic"
+      }
+    ],
+    "risk_notes": [
+      {
+        "code": "single_source_signal",
+        "severity": "medium",
+        "message": "当前事实点数量偏少，需补充更多来源交叉验证。"
+      }
+    ],
+    "uncertainty_markers": [
+      "当前结论基于单一来源，仍需补充交叉验证。"
+    ]
+  },
+  "scorecard": {
+    "dimensions": [
+      {
+        "dimension": "timeliness",
+        "score": 14,
+        "weight": 20
+      },
+      {
+        "dimension": "evidence_strength",
+        "score": 10,
+        "weight": 30
+      },
+      {
+        "dimension": "novelty",
+        "score": 12,
+        "weight": 15
+      },
+      {
+        "dimension": "business_relevance",
+        "score": 10,
+        "weight": 20
+      },
+      {
+        "dimension": "execution_readiness",
+        "score": 8,
+        "weight": 15
+      }
+    ],
+    "total_score": 54,
+    "decision_status": "need_more_evidence"
+  },
+  "scored_events": [
+    {
+      "request_id": "req-stage4-002",
+      "event_id": "evt-stage4-002",
+      "event_title": "某行业热点仅有单一来源讨论",
+      "status": "need_more_evidence",
+      "timeline": [
+        {
+          "timestamp": "2026-04-09T09:00:00Z",
+          "label": "candidate_detected",
+          "summary": "某行业热点仅有单一来源讨论",
+          "source_url": "https://example.com/single-source-topic",
+          "source_type": "forum"
+        }
+      ],
+      "fact_points": [
+        {
+          "fact_id": "fact-stage4-101",
+          "claim": "单一论坛帖子提到行业热点变化",
+          "source_url": "https://example.com/single-source-topic",
+          "confidence": 0.62,
+          "citation_excerpt": "论坛帖子提到可能出现新的趋势。"
+        }
+      ],
+      "risk_flags": [
+        {
+          "code": "single_source_signal",
+          "severity": "medium",
+          "message": "当前事实点数量偏少，需补充更多来源交叉验证。"
+        }
+      ],
+      "scorecard": {
+        "dimensions": [
+          {
+            "dimension": "timeliness",
+            "score": 14,
+            "weight": 20
+          },
+          {
+            "dimension": "evidence_strength",
+            "score": 10,
+            "weight": 30
+          },
+          {
+            "dimension": "novelty",
+            "score": 12,
+            "weight": 15
+          },
+          {
+            "dimension": "business_relevance",
+            "score": 10,
+            "weight": 20
+          },
+          {
+            "dimension": "execution_readiness",
+            "score": 8,
+            "weight": 15
+          }
+        ],
+        "total_score": 54,
+        "decision_status": "need_more_evidence"
+      },
+      "trace": {
+        "source_url": "https://example.com/single-source-topic",
+        "source_type": "forum",
+        "company": "",
+        "initial_tags": ["行业热点", "单一来源"]
+      }
+    }
+  ],
+  "content_bundle": {
+    "event_id": "evt-stage4-002",
+    "content_status": "generated",
+    "evidence_pack": {
+      "core_claim": "某行业热点仅有单一来源讨论",
+      "source_support": [
+        {
+          "fact_id": "fact-stage4-101",
+          "claim": "单一论坛帖子提到行业热点变化",
+          "source_url": "https://example.com/single-source-topic",
+          "confidence": 0.62,
+          "citation_excerpt": "论坛帖子提到可能出现新的趋势。",
+          "uncertainty": "待补充交叉验证"
+        }
+      ],
+      "timeline_support": [
+        {
+          "timestamp": "2026-04-09T09:00:00Z",
+          "label": "candidate_detected",
+          "summary": "某行业热点仅有单一来源讨论",
+          "source_url": "https://example.com/single-source-topic"
+        }
+      ],
+      "risk_notes": [
+        {
+          "code": "single_source_signal",
+          "severity": "medium",
+          "message": "当前事实点数量偏少，需补充更多来源交叉验证。"
+        }
+      ],
+      "uncertainty_markers": [
+        "当前结论基于单一来源，仍需补充交叉验证。"
+      ]
+    },
+    "title": {
+      "text": "行业热点追踪：某行业热点仅有单一来源讨论",
+      "version": 1
+    },
+    "draft": {
+      "version": 1,
+      "label": "初稿",
+      "body_markdown": "初稿：某行业热点仅有单一来源讨论",
+      "source_refs": ["fact-stage4-101"],
+      "uncertainty_markers": [
+        "当前结论基于单一来源，仍需补充交叉验证。"
+      ]
+    },
+    "summary": {
+      "version": 1,
+      "text": "摘要：某行业热点仅有单一来源讨论。",
+      "source_refs": ["fact-stage4-101"],
+      "uncertainty_markers": [
+        "当前结论基于单一来源，仍需补充交叉验证。"
+      ]
+    }
+  }
+}

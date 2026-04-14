@@ -1,0 +1,49 @@
+{
+  "request_id": "req-stage3-002",
+  "trigger_source": "manual",
+  "decision_status": "need_more_evidence",
+  "scored_events": [
+    {
+      "request_id": "req-stage3-002",
+      "event_id": "evt-stage3-002",
+      "event_title": "某行业热点仅有单一来源讨论",
+      "status": "need_more_evidence",
+      "timeline": [
+        {
+          "timestamp": "2026-04-09T09:00:00Z",
+          "label": "candidate_detected",
+          "summary": "某行业热点仅有单一来源讨论",
+          "source_url": "https://example.com/single-source-topic",
+          "source_type": "forum"
+        }
+      ],
+      "fact_points": [
+        {
+          "fact_id": "fact-stage3-101",
+          "claim": "单一论坛帖子提到行业热点变化",
+          "source_url": "https://example.com/single-source-topic",
+          "confidence": 0.62,
+          "citation_excerpt": "论坛帖子提到可能出现新的趋势。"
+        }
+      ],
+      "risk_flags": [
+        {
+          "code": "single_source_signal",
+          "severity": "medium",
+          "message": "当前事实点数量偏少，需补充更多来源交叉验证。"
+        }
+      ],
+      "scorecard": {
+        "dimensions": [],
+        "total_score": 48,
+        "decision_status": "need_more_evidence"
+      },
+      "trace": {
+        "source_url": "https://example.com/single-source-topic",
+        "source_type": "forum",
+        "company": "",
+        "initial_tags": ["行业观察"]
+      }
+    }
+  ]
+}

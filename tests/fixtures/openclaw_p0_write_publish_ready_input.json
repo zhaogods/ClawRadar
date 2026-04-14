@@ -1,0 +1,77 @@
+{
+  "request_id": "req-stage3-001",
+  "trigger_source": "manual",
+  "decision_status": "publish_ready",
+  "scored_events": [
+    {
+      "request_id": "req-stage3-001",
+      "event_id": "evt-stage3-001",
+      "event_title": "OpenAI 发布企业级智能体协作平台",
+      "status": "publish_ready",
+      "timeline": [
+        {
+          "timestamp": "2026-04-08T22:00:00Z",
+          "label": "preview",
+          "summary": "发布前预告披露将上线多智能体企业协作能力",
+          "source_url": "https://example.com/openai-agents-preview",
+          "source_type": "blog"
+        },
+        {
+          "timestamp": "2026-04-09T08:00:00Z",
+          "label": "candidate_detected",
+          "summary": "OpenAI 发布企业级智能体协作平台",
+          "source_url": "https://example.com/openai-agents-platform",
+          "source_type": "news"
+        },
+        {
+          "timestamp": "2026-04-09T08:30:00Z",
+          "label": "market_feedback",
+          "summary": "首批合作客户确认已开始试点接入",
+          "source_url": "https://example.com/openai-agents-customer",
+          "source_type": "interview"
+        }
+      ],
+      "fact_points": [
+        {
+          "fact_id": "fact-stage3-001",
+          "claim": "平台包含多智能体任务编排能力",
+          "source_url": "https://example.com/openai-agents-platform",
+          "confidence": 0.95,
+          "citation_excerpt": "支持跨任务编排与执行监控。"
+        },
+        {
+          "fact_id": "fact-stage3-002",
+          "claim": "产品提供企业权限与审计日志",
+          "source_url": "https://example.com/openai-agents-platform-security",
+          "confidence": 0.91,
+          "citation_excerpt": "管理员可查看访问日志与角色授权。"
+        },
+        {
+          "fact_id": "fact-stage3-003",
+          "claim": "已有首批企业客户进入试点",
+          "source_url": "https://example.com/openai-agents-customer",
+          "confidence": 0.88,
+          "citation_excerpt": "合作客户在发布当天确认试点计划。"
+        }
+      ],
+      "risk_flags": [
+        {
+          "code": "followup_monitoring",
+          "severity": "low",
+          "message": "需继续观察试点客户数量变化。"
+        }
+      ],
+      "scorecard": {
+        "dimensions": [],
+        "total_score": 88,
+        "decision_status": "publish_ready"
+      },
+      "trace": {
+        "source_url": "https://example.com/openai-agents-platform",
+        "source_type": "news",
+        "company": "OpenAI",
+        "initial_tags": ["AI", "企业服务", "智能体"]
+      }
+    }
+  ]
+}

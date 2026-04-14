@@ -1,0 +1,27 @@
+{
+  "request_id": "req-stage2-002",
+  "trigger_source": "cron",
+  "normalized_events": [
+    {
+      "request_id": "req-stage2-002",
+      "event_id": "evt-stage2-002",
+      "event_title": "某创业公司或将发布新模型",
+      "company": "",
+      "event_time": "2026-04-09T09:00:00Z",
+      "source_url": "https://example.com/startup-rumor",
+      "source_type": "social",
+      "raw_excerpt": "社交媒体出现未经证实的产品截图。",
+      "initial_tags": [],
+      "confidence": 0.42,
+      "status": "accepted",
+      "fact_candidates": [
+        {
+          "claim": "社交媒体流出一张疑似产品截图",
+          "source_url": "https://example.com/startup-rumor",
+          "confidence": 0.42,
+          "citation_excerpt": "截图未获官方确认。"
+        }
+      ]
+    }
+  ]
+}

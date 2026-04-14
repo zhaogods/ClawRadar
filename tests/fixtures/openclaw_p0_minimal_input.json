@@ -1,0 +1,17 @@
+{
+  "request_id": "req-stage1-001",
+  "trigger_source": "manual",
+  "topic_candidates": [
+    {
+      "event_id": "evt-stage1-001",
+      "event_title": "OpenAI 发布新模型能力更新",
+      "event_time": "2026-04-09T08:00:00Z",
+      "source_url": "https://example.com/openai-model-update",
+      "source_type": "news",
+      "company": "OpenAI",
+      "raw_excerpt": "新模型在推理与工具调用方面有所增强。",
+      "initial_tags": ["AI", "模型发布"],
+      "confidence": 0.91
+    }
+  ]
+}
