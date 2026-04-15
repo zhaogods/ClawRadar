@@ -1,19 +1,19 @@
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from clawradar.orchestrator import topic_radar_orchestrate
+REPO_MARKERS = (
+    ("clawradar", "orchestrator.py"),
+    ("run_openclaw_deliverable.py",),
+)
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the ClawRadar topic radar workflow from the skill wrapper")
+    parser.add_argument("--repo-root", default="", help="Repository root containing clawradar/ and run_openclaw_deliverable.py")
     parser.add_argument("--payload-file", default="", help="Path to a full JSON payload file")
     parser.add_argument(
         "--input-mode",
@@ -33,7 +33,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--content-bundle-file", default="", help="Path to a JSON file containing one content_bundle")
     parser.add_argument("--content-bundles-file", default="", help="Path to a JSON file containing content_bundles")
     parser.add_argument("--limit", type=int, default=5)
-    parser.add_argument("--request-id", default="req-openclaw-topic-radar")
+    parser.add_argument("--request-id", default="req-clawradar-topic-radar")
     parser.add_argument("--trigger-source", default="manual")
     parser.add_argument("--execution-mode", default="full_pipeline")
     parser.add_argument("--write-executor", default="external_writer")
@@ -44,6 +44,55 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--runs-root", default="")
     parser.add_argument("--full-result", action="store_true", help="Print the full workflow result instead of a compact summary")
     return parser.parse_args()
+
+
+def _looks_like_repo_root(path: Path) -> bool:
+    return (path / "clawradar" / "orchestrator.py").is_file() and (path / "run_openclaw_deliverable.py").is_file()
+
+
+def _find_repo_root(start: Path) -> Path | None:
+    current = start.resolve()
+    for candidate in [current, *current.parents]:
+        if _looks_like_repo_root(candidate):
+            return candidate
+    return None
+
+
+def _resolve_repo_root(cli_value: str) -> Path:
+    if cli_value:
+        candidate = Path(cli_value).resolve()
+        if _looks_like_repo_root(candidate):
+            return candidate
+        raise SystemExit(f"--repo-root does not point to a ClawRadar repository: {candidate}")
+
+    env_value = os.environ.get("CLAWRADAR_REPO_ROOT", "").strip()
+    if env_value:
+        candidate = Path(env_value).resolve()
+        if _looks_like_repo_root(candidate):
+            return candidate
+        raise SystemExit(f"CLAWRADAR_REPO_ROOT does not point to a ClawRadar repository: {candidate}")
+
+    cwd_match = _find_repo_root(Path.cwd())
+    if cwd_match is not None:
+        return cwd_match
+
+    script_match = _find_repo_root(Path(__file__).resolve().parent)
+    if script_match is not None:
+        return script_match
+
+    raise SystemExit(
+        "Could not locate the ClawRadar repository root. Run this script from inside the repository, "
+        "or pass --repo-root, or set CLAWRADAR_REPO_ROOT."
+    )
+
+
+def _load_orchestrator(repo_root: Path):
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
+    from clawradar.orchestrator import topic_radar_orchestrate
+
+    return topic_radar_orchestrate
 
 
 def _load_json(path: str) -> Any:
@@ -151,6 +200,8 @@ def _build_payload(args: argparse.Namespace) -> Dict[str, Any]:
 
 def main() -> None:
     args = _parse_args()
+    repo_root = _resolve_repo_root(args.repo_root)
+    topic_radar_orchestrate = _load_orchestrator(repo_root)
     payload = _load_json(args.payload_file) if args.payload_file else _build_payload(args)
     runs_root = Path(args.runs_root) if args.runs_root else None
 
