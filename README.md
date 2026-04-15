@@ -1,11 +1,39 @@
+<div align="center">
+
 # ClawRadar
 
-ClawRadar 是一个面向舆情选题、评分、写作和交付的 Python 项目。当前仓库包含两层结构：
+**面向真实来源热点发现、结构化评分、内容生成与归档交付的开源舆情流水线**
+
+**中文：一个用于热点发现、证据组织、内容生成与归档交付的开源舆情工作流。**
+
+**English: An open-source public-opinion workflow for trend discovery, evidence structuring, content generation, and archived delivery.**
+
+![License](https://img.shields.io/badge/license-GPL--2.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)
+
+</div>
+
+ClawRadar 是一个开源 Python 项目，聚焦舆情选题、评分、写作和交付。当前仓库包含两层结构：
 
 - 顶层 `clawradar/`：更聚焦的 P0 交付管线，提供统一入口、结构化契约、测试夹具和正式 launcher。
 - `radar_engines/`：保留的原始能力层，包含 `MindSpider`、`QueryEngine`、`MediaEngine`、`InsightEngine`、`ReportEngine` 等模块，供顶层流程复用。
 
 这个仓库更接近“可编排的舆情流水线”而不是单一脚本。核心目标是把候选事件从输入接入，一路处理到评分、成稿和归档交付。
+
+## 项目描述
+
+ClawRadar 试图把“舆情发现 -> 证据组织 -> 评分决策 -> 写作产出 -> 归档交付”收敛到同一条可复用链路里。它既可以作为独立命令行流程运行，也可以作为上层系统调用的协议化组件使用。
+
+当前顶层实现主要面向 P0 交付场景，强调：
+
+- 统一入口，而不是分散脚本
+- 结构化中间产物，而不是仅返回文本
+- 可归档、可回放、可审计的运行结果
+- 与 `radar_engines/` 能力层复用，而不是重复造轮子
+
+## 致谢
+
+本项目的能力层整理与兼容保留，参考并受益于开源项目 [BettaFish](https://github.com/666ghj/BettaFish)。感谢原项目作者与贡献者。
 
 ## 当前实现重点
 
@@ -197,6 +225,14 @@ python -m pytest tests
 - `real_source` 和 `external_writer` 依赖 `radar_engines/` 中的模块以及对应运行环境，不是纯标准库能力。
 - 项目里有一些历史文档和兼容文件，可能存在编码或命名风格不一致的情况；以顶层 `clawradar/` 和 `tests/` 的真实实现为准。
 
-## 许可证
+## 开源协议
 
-仓库中 `radar_engines/` 目录自带原始项目许可证文件。若你准备对外发布或拆分子模块，建议先按目录核对对应 license 和第三方依赖条款。
+本仓库根目录已采用 [GPL-2.0](./LICENSE) 开源协议。
+
+这与 `radar_engines/` 目录中已有的许可证口径保持一致，便于仓库作为一个整体对外发布。
+
+如果你后续准备拆分子模块、二次分发或引入新的第三方组件，仍然建议逐目录核对：
+
+- 根目录 [LICENSE](./LICENSE)
+- [radar_engines/LICENSE](./radar_engines/LICENSE)
+- 各子目录附带的第三方许可证文件
