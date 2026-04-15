@@ -40,7 +40,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
         self.assertNotIn("evidence_packet", result)
 
     def test_deliver_publish_ready_payload_returns_protocol_fields_and_full_archive_snapshot(self):
-        payload = self._load_fixture("openclaw_p0_deliver_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             result = topic_radar_deliver(
@@ -97,13 +97,13 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
             self.assertNotIn("evidence_packet", archived_payload["content_bundle"])
 
             self.assertEqual(archived_message["channel"], "feishu")
-            self.assertEqual(archived_message["template_id"], "openclaw_p0_feishu_summary_v1")
+            self.assertEqual(archived_message["template_id"], "clawradar_feishu_summary_v1")
             self.assertEqual(archived_message["metadata"]["request_id"], payload["request_id"])
             self.assertEqual(archived_message["metadata"]["event_id"], payload["content_bundle"]["event_id"])
             self.assertIn("不确定性提示", archived_message["body_markdown"])
 
     def test_deliver_rejects_non_publish_ready_payload_without_crossing_stage_boundary(self):
-        payload = self._load_fixture("openclaw_p0_deliver_need_more_evidence_input.json")
+        payload = self._load_fixture("clawradar_deliver_need_more_evidence_input.json")
 
         result = topic_radar_deliver(payload, delivery_time="2026-04-09T12:05:00Z")
 
@@ -121,7 +121,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
         self.assertIsNone(result["delivery_receipt"]["events"][0]["archive_path"])
 
     def test_deliver_failure_still_preserves_local_archive_and_upstream_scorecard(self):
-        payload = self._load_fixture("openclaw_p0_deliver_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["simulate_delivery_failure"] = True
         expected_scorecard = deepcopy(payload["scorecard"])
         expected_evidence_pack = deepcopy(payload["evidence_pack"])
@@ -157,7 +157,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
             self.assertEqual(archived_payload["content_bundle"], expected_content_bundle)
 
     def test_deliver_rerun_keeps_upstream_structured_artifacts_unchanged(self):
-        payload = self._load_fixture("openclaw_p0_deliver_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         expected_structured_artifacts = {
             "normalized_events": deepcopy(payload["normalized_events"]),
             "timeline": deepcopy(payload["timeline"]),
@@ -207,7 +207,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
         self.assertEqual(payload["content_bundle"], expected_structured_artifacts["content_bundle"])
 
     def test_feishu_message_template_and_rejection_structure_are_protocol_stable(self):
-        payload = self._load_fixture("openclaw_p0_deliver_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         message = build_feishu_delivery_message(
             payload,
             payload["content_bundle"],
@@ -215,7 +215,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
         )
 
         self.assertEqual(message["channel"], "feishu")
-        self.assertEqual(message["template_id"], "openclaw_p0_feishu_summary_v1")
+        self.assertEqual(message["template_id"], "clawradar_feishu_summary_v1")
         self.assertIn(payload["request_id"], message["body_markdown"])
         self.assertIn(payload["content_bundle"]["event_id"], message["body_markdown"])
 

@@ -340,7 +340,7 @@ def _build_entry_resolution(
             resolved_delivery_target = str(delivery_options.get("target") or "").strip()
             delivery_target_source = "entry_options"
         else:
-            resolved_delivery_target = "archive://openclaw_p0"
+            resolved_delivery_target = "archive://clawradar"
             delivery_target_source = "default"
     else:
         if delivery_channel is not None:
@@ -1583,7 +1583,7 @@ def topic_radar_orchestrate(
                 deliver_result = _build_archive_only_delivery_result(
                     deliver_payload,
                     delivery_time=resolved_delivery_time,
-                    delivery_target=resolved_delivery_target or "archive://openclaw_p0",
+                    delivery_target=resolved_delivery_target or "archive://clawradar",
                     runs_root=runs_root,
                 )
                 return _finalize_orchestration(
@@ -2325,7 +2325,7 @@ def topic_radar_orchestrate(
             deliver_result = _build_archive_only_delivery_result(
                 delivery_seed_payload,
                 delivery_time=resolved_delivery_time,
-                delivery_target=resolved_delivery_target or "archive://openclaw_p0",
+                delivery_target=resolved_delivery_target or "archive://clawradar",
                 runs_root=runs_root,
             )
             return _finalize_orchestration(

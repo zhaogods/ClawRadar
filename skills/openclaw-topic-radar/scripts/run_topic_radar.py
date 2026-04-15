@@ -38,7 +38,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--execution-mode", default="full_pipeline")
     parser.add_argument("--write-executor", default="external_writer")
     parser.add_argument("--delivery-target-mode", default="archive_only")
-    parser.add_argument("--delivery-target", default="archive://openclaw_p0")
+    parser.add_argument("--delivery-target", default="archive://clawradar")
     parser.add_argument("--delivery-channel", default="")
     parser.add_argument("--decision-status", default="")
     parser.add_argument("--runs-root", default="")

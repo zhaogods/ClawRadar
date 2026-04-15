@@ -20,7 +20,7 @@
     },
     "delivery": {
       "target_mode": "archive_only",
-      "target": "archive://openclaw_p0"
+      "target": "archive://clawradar"
     },
     "degrade": {
       "input_unavailable": "fail",
@@ -48,7 +48,7 @@
     },
     "delivery": {
       "target_mode": "archive_only",
-      "target": "archive://openclaw_p0"
+      "target": "archive://clawradar"
     },
     "degrade": {
       "input_unavailable": "fail",
@@ -87,7 +87,7 @@
   "request_id": "req-deliver-only-demo",
   "trigger_source": "manual",
   "decision_status": "publish_ready",
-  "delivery_target": "archive://openclaw_p0",
+  "delivery_target": "archive://clawradar",
   "content_bundle": {
     "event_id": "evt-demo-001",
     "content_status": "generated",

@@ -1,4 +1,4 @@
-"""OpenClaw P0 阶段一 ingest、阶段二 score、阶段三 write、阶段四 deliver 与阶段五 orchestrator 能力入口。"""
+"""ClawRadar 阶段一 ingest、阶段二 score、阶段三 write、阶段四 deliver 与阶段五 orchestrator 能力入口。"""
 
 from .contracts import (
     ErrorCode,

@@ -22,7 +22,7 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         return json.loads((self.fixtures_dir / filename).read_text(encoding="utf-8"))
 
     def _build_publish_ready_pipeline_payload(self):
-        payload = self._load_fixture("openclaw_p0_score_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_score_publish_ready_input.json")
         payload["delivery_channel"] = "feishu"
         payload["delivery_target"] = "feishu://openclaw/p0-review"
         payload["entry_options"] = {
@@ -196,7 +196,7 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(result["event_statuses"][0]["deliver_status"], "delivered")
 
     def test_defaults_use_external_writer_and_archive_only(self):
-        payload = self._load_fixture("openclaw_p0_score_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_score_publish_ready_input.json")
         fake_result = {
             "html_content": "<html><body><h1>综合报告</h1><p>默认正式路径调用外部写作。</p></body></html>",
             "report_id": "report-defaults-001",
@@ -225,9 +225,9 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(result["entry_resolution"]["write"]["executor"], WriteExecutor.EXTERNAL_WRITER.value)
         self.assertEqual(result["entry_resolution"]["delivery"]["target_mode"], "archive_only")
         self.assertEqual(result["entry_resolution"]["delivery"]["channel"], "archive_only")
-        self.assertEqual(result["entry_resolution"]["delivery"]["target"], "archive://openclaw_p0")
+        self.assertEqual(result["entry_resolution"]["delivery"]["target"], "archive://clawradar")
         self.assertEqual(result["delivery_receipt"]["delivery_channel"], "archive_only")
-        self.assertEqual(result["delivery_receipt"]["delivery_target"], "archive://openclaw_p0")
+        self.assertEqual(result["delivery_receipt"]["delivery_target"], "archive://clawradar")
         self.assertEqual(result["content_bundles"][0]["writer_receipt"]["executor"], WriteExecutor.EXTERNAL_WRITER.value)
         self.assertEqual(result["content_bundles"][0]["writer_receipt"]["report_id"], "report-defaults-001")
         self.assertEqual(result["event_statuses"][0]["deliver_status"], "archived")
@@ -263,7 +263,7 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(payload["entry_options"]["input"]["mode"], "user_topic")
         self.assertEqual(payload["entry_options"]["write"]["executor"], "external_writer")
         self.assertEqual(payload["entry_options"]["delivery"]["target_mode"], "archive_only")
-        self.assertEqual(payload["entry_options"]["delivery"]["target"], "archive://openclaw_p0")
+        self.assertEqual(payload["entry_options"]["delivery"]["target"], "archive://clawradar")
         self.assertEqual(payload["entry_options"]["degrade"]["input_unavailable"], "fail")
         self.assertEqual(payload["entry_options"]["degrade"]["write_unavailable"], "fail")
         self.assertEqual(payload["entry_options"]["degrade"]["delivery_unavailable"], "fail")
@@ -351,7 +351,7 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             self.assertEqual(result["stage_results"]["deliver"]["delivery_receipt"], result["delivery_receipt"])
 
     def test_archive_only_defaults_persist_traceable_archive_and_status(self):
-        payload = self._load_fixture("openclaw_p0_score_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_score_publish_ready_input.json")
         delivery_time = "2026-04-09T13:00:00Z"
         event_id = payload["topic_candidates"][0]["event_id"]
         fake_result = {
@@ -415,7 +415,7 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             self.assertEqual(archived_payload["request_id"], result["request_id"])
             self.assertEqual(archived_payload["event_id"], event_id)
             self.assertEqual(archived_payload["delivery_request"]["delivery_channel"], "archive_only")
-            self.assertEqual(archived_payload["delivery_request"]["delivery_target"], "archive://openclaw_p0")
+            self.assertEqual(archived_payload["delivery_request"]["delivery_target"], "archive://clawradar")
             self.assertEqual(archived_payload["scorecard"], result["scored_events"][0]["scorecard"])
             self.assertEqual(
                 archived_payload["content_bundle"],
@@ -423,7 +423,7 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             )
             self.assertEqual(archived_message["metadata"]["event_id"], event_id)
             self.assertEqual(result["delivery_receipt"]["delivery_channel"], "archive_only")
-            self.assertEqual(result["delivery_receipt"]["delivery_target"], "archive://openclaw_p0")
+            self.assertEqual(result["delivery_receipt"]["delivery_target"], "archive://clawradar")
 
             self.assertEqual(result["stage_results"]["write"]["content_bundles"][0], result["content_bundles"][0])
             self.assertEqual(
@@ -775,7 +775,7 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(result["delivery_receipt"]["events"][0]["event_id"], payload["topic_candidates"][0]["event_id"])
 
     def test_cron_score_only_preserves_trigger_source(self):
-        payload = self._load_fixture("openclaw_p0_score_need_more_evidence_input.json")
+        payload = self._load_fixture("clawradar_score_need_more_evidence_input.json")
 
         result = topic_radar_orchestrate(payload, execution_mode="score_only")
 
@@ -807,7 +807,7 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(len(original_payload["topic_candidates"]), 2)
 
     def test_ingest_rejection_marks_downstream_stages_as_skipped(self):
-        payload = self._load_fixture("openclaw_p0_minimal_input.json")
+        payload = self._load_fixture("clawradar_minimal_input.json")
         del payload["topic_candidates"][0]["source_url"]
 
         result = topic_radar_orchestrate(payload)

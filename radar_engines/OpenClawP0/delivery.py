@@ -55,7 +55,7 @@ CONTENT_BUNDLE_REQUIRED_FIELDS: Tuple[str, ...] = (
 )
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_RUNS_ROOT = WORKSPACE_ROOT / "radar_engines" / "outputs" / "openclaw_p0_runs"
+DEFAULT_RUNS_ROOT = WORKSPACE_ROOT / "radar_engines" / "outputs" / "clawradar_runs"
 
 
 class DeliveryValidationError(ValueError):
@@ -423,7 +423,7 @@ def build_feishu_delivery_message(payload: Dict[str, Any], content_bundle: Dict[
 
     return {
         "channel": DeliveryChannel.FEISHU.value,
-        "template_id": "openclaw_p0_feishu_summary_v1",
+        "template_id": "clawradar_feishu_summary_v1",
         "msg_type": "post",
         "title": f"OpenClaw 交付｜{title_text}",
         "body_markdown": body_markdown,
@@ -506,7 +506,7 @@ def build_archive_only_delivery_result(
     protocol_view = _build_protocol_view(payload)
     output_context = payload.get("output_context") if isinstance(payload.get("output_context"), dict) else {}
     resolved_delivery_time = _resolve_delivery_time(payload, delivery_time)
-    resolved_delivery_target = str(delivery_target or payload.get("delivery_target") or "archive://openclaw_p0").strip()
+    resolved_delivery_target = str(delivery_target or payload.get("delivery_target") or "archive://clawradar").strip()
     resolved_runs_root = Path(runs_root or DEFAULT_RUNS_ROOT)
     resolved_runs_root.mkdir(parents=True, exist_ok=True)
 

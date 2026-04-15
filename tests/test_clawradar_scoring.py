@@ -13,7 +13,7 @@ class ClawRadarScoringTestCase(unittest.TestCase):
         return json.loads((self.fixtures_dir / filename).read_text(encoding="utf-8"))
 
     def test_score_accepts_ingest_shape_and_returns_structured_publish_ready_result(self):
-        payload = self._load_fixture("openclaw_p0_score_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_score_publish_ready_input.json")
 
         result = score_topic_candidates(payload)
 
@@ -30,7 +30,7 @@ class ClawRadarScoringTestCase(unittest.TestCase):
         self.assertEqual(scored_event["trace"]["source_url"], payload["topic_candidates"][0]["source_url"])
 
     def test_score_supports_independent_normalized_input_and_routes_need_more_evidence(self):
-        payload = self._load_fixture("openclaw_p0_score_need_more_evidence_input.json")
+        payload = self._load_fixture("clawradar_score_need_more_evidence_input.json")
 
         result = score_topic_candidates(payload)
 
@@ -46,7 +46,7 @@ class ClawRadarScoringTestCase(unittest.TestCase):
         self.assertTrue(any(flag["code"] == "single_source_signal" for flag in scored_event["risk_flags"]))
 
     def test_score_rejection_preserves_missing_fields_for_invalid_payload(self):
-        payload = self._load_fixture("openclaw_p0_score_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_score_publish_ready_input.json")
         del payload["topic_candidates"][0]["event_id"]
 
         result = build_score_rejection(payload)

@@ -14,7 +14,7 @@ class ClawRadarWritingTestCase(unittest.TestCase):
         return json.loads((self.fixtures_dir / filename).read_text(encoding="utf-8"))
 
     def test_publish_ready_input_generates_structured_content_bundle(self):
-        payload = self._load_fixture("openclaw_p0_write_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_write_publish_ready_input.json")
 
         result = topic_radar_write(payload)
 
@@ -35,7 +35,7 @@ class ClawRadarWritingTestCase(unittest.TestCase):
         self.assertTrue(bundle["summary"]["uncertainty_markers"])
 
     def test_non_publish_ready_input_is_rejected_with_clear_failure_structure(self):
-        payload = self._load_fixture("openclaw_p0_write_need_more_evidence_input.json")
+        payload = self._load_fixture("clawradar_write_need_more_evidence_input.json")
 
         result = topic_radar_write(payload)
 
@@ -45,7 +45,7 @@ class ClawRadarWritingTestCase(unittest.TestCase):
         self.assertEqual(result["errors"][0]["code"], "decision_not_publish_ready")
 
     def test_rewrite_and_summary_regeneration_can_be_called_independently(self):
-        payload = self._load_fixture("openclaw_p0_write_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_write_publish_ready_input.json")
         generated = topic_radar_write(payload)
         bundle = generated["content_bundles"][0]
 
@@ -72,7 +72,7 @@ class ClawRadarWritingTestCase(unittest.TestCase):
         )
 
     def test_rewrite_requires_existing_content_bundle(self):
-        payload = self._load_fixture("openclaw_p0_write_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_write_publish_ready_input.json")
         payload["operation"] = WriteOperation.REWRITE.value
 
         result = build_write_rejection(payload)
@@ -81,7 +81,7 @@ class ClawRadarWritingTestCase(unittest.TestCase):
         self.assertEqual(result["errors"][0]["code"], "content_bundle_required")
 
     def test_external_writer_success_returns_writer_receipt_and_artifacts(self):
-        payload = self._load_fixture("openclaw_p0_write_publish_ready_input.json")
+        payload = self._load_fixture("clawradar_write_publish_ready_input.json")
         fake_result = {
             "html_content": "<html><body><h1>综合报告</h1><p>阶段八外部写作成功。</p></body></html>",
             "report_id": "report-stage8-001",
