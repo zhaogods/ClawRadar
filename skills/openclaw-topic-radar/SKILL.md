@@ -3,11 +3,16 @@ name: openclaw-topic-radar
 description: 调用当前仓库的 ClawRadar 统一入口来运行舆情选题、评分、写作和归档交付流程。适用于 user_topic、real_source 或已有中间工件继续执行。
 ---
 
-# OpenClaw Topic Radar
+# ClawRadar Topic Radar
 
 当用户希望在当前仓库里触发、继续执行或检查 ClawRadar 统一工作流时，使用本 skill。
 
 它只做一件事：收口到当前仓库真实入口，而不是再造一套平行编排。
+
+说明：
+
+- Skill 名称仍保留为 `openclaw-topic-radar`，用于兼容旧引用；
+- 但当前项目主名称已经是 `ClawRadar`。
 
 真实入口：
 

@@ -108,3 +108,13 @@ python skills/openclaw-topic-radar/scripts/run_topic_radar.py --scored-events-fi
 python skills/openclaw-topic-radar/scripts/run_topic_radar.py --content-bundle-file content_bundle.json --execution-mode deliver_only
 python skills/openclaw-topic-radar/scripts/run_topic_radar.py --content-bundles-file content_bundles.json --execution-mode deliver_only
 ```
+
+## Naming note
+
+当前 skill 目录名仍然是 `openclaw-topic-radar`，这是兼容性保留。
+
+当前项目主口径已经统一为 `ClawRadar`，因此：
+
+- 代码主包是 `clawradar/`
+- 默认归档目标是 `archive://clawradar`
+- 主线测试与 fixtures 已改为 `clawradar_*`
