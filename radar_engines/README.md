@@ -274,8 +274,6 @@ BettaFish/
 鈹溾攢鈹€ app.py                                  # Flask涓诲簲鐢ㄥ叆鍙?
 鈹溾攢鈹€ config.py                               # 鍏ㄥ眬閰嶇疆鏂囦欢
 鈹溾攢鈹€ ../.env.example                         # ClawRadar 浠撳簱鏍圭洰褰曠殑鐜鍙橀噺绀轰緥鏂囦欢
-鈹溾攢鈹€ docker-compose.yml                      # Docker澶氭湇鍔＄紪鎺掗厤缃?
-鈹溾攢鈹€ Dockerfile                              # Docker闀滃儚鏋勫缓鏂囦欢
 鈹溾攢鈹€ ../requirements.txt                     # ClawRadar 浠撳簱鏍圭洰褰曠殑 Python 渚濊禆鍖呮竻鍗?
 鈹溾攢鈹€ regenerate_latest_html.py               # 浣跨敤鏈€鏂扮珷鑺傞噸瑁呰骞舵覆鏌揌TML
 鈹溾攢鈹€ regenerate_latest_md.py                 # 浣跨敤鏈€鏂扮珷鑺傞噸瑁呰骞舵覆鏌揗arkdown
@@ -287,46 +285,6 @@ BettaFish/
 鈹溾攢鈹€ CONTRIBUTING-EN.md                      # 鑻辨枃璐＄尞鎸囧崡
 鈹斺攢鈹€ LICENSE                                 # GPL-2.0寮€婧愯鍙瘉
 ```
-
-## 馃殌 蹇€熷紑濮嬶紙Docker锛?
-
-> [!NOTE]
-> 浠ヤ笅鍐呭鎻忚堪鐨勬槸 `radar_engines/` 瀛愮洰褰曡嚜韬殑鐙珛杩愯鏂瑰紡銆傚湪褰撳墠 ClawRadar 浠撳簱涓紝濡傛灉浣犺璧?OpenClaw 涓荤嚎锛岃浼樺厛浣跨敤浠撳簱鏍圭洰褰曠殑 `run_openclaw_deliverable.py` 涓庨《灞?`clawradar/`銆?
-
-### 1. 鍚姩椤圭洰
-
-澶嶅埗涓€浠介」鐩牴鐩綍 `.env.example` 鏂囦欢锛屽懡鍚嶄负 `.env` 锛屽苟鎸夐渶閰嶇疆 `.env` 鏂囦欢涓殑鐜鍙橀噺
-
-鎵ц浠ヤ笅鍛戒护鍦ㄥ悗鍙板惎鍔ㄦ墍鏈夋湇鍔★細
-
-```bash
-docker compose up -d
-```
-
-> **娉細闀滃儚鎷夊彇閫熷害鎱?*锛屽湪鍘?`docker-compose.yml` 鏂囦欢涓紝鎴戜滑宸茬粡閫氳繃**娉ㄩ噴**鐨勬柟寮忔彁渚涗簡澶囩敤闀滃儚鍦板潃渚涙偍鏇挎崲
-
-### 2. 閰嶇疆璇存槑
-
-#### 鏁版嵁搴撻厤缃紙PostgreSQL锛?
-
-璇锋寜鐓т互涓嬪弬鏁伴厤缃暟鎹簱杩炴帴淇℃伅锛屼篃鏀寔Mysql鍙嚜琛屼慨鏀癸細
-
-| 閰嶇疆椤?| 濉啓鍊?| 璇存槑 |
-| :--- | :--- | :--- |
-| `DB_HOST` | `db` | 鏁版嵁搴撴湇鍔″悕绉?(瀵瑰簲 `docker-compose.yml` 涓殑鏈嶅姟鍚? |
-| `DB_PORT` | `5432` | 榛樿 PostgreSQL 绔彛 |
-| `DB_USER` | `bettafish` | 鏁版嵁搴撶敤鎴峰悕 |
-| `DB_PASSWORD` | `bettafish` | 鏁版嵁搴撳瘑鐮?|
-| `DB_NAME` | `bettafish` | 鏁版嵁搴撳悕绉?|
-| **鍏朵粬** | **淇濇寔榛樿** | 鏁版嵁搴撹繛鎺ユ睜绛夊叾浠栧弬鏁拌淇濇寔榛樿璁剧疆銆?|
-
-#### 澶фā鍨嬮厤缃?
-
-> 鎴戜滑鎵€鏈?LLM 璋冪敤浣跨敤 OpenAI 鐨?API 鎺ュ彛鏍囧噯
-
-鍦ㄥ畬鎴愭暟鎹簱閰嶇疆鍚庯紝璇锋甯搁厤缃?*鎵€鏈夊ぇ妯″瀷鐩稿叧鐨勫弬鏁?*锛岀‘淇濈郴缁熻兘澶熻繛鎺ュ埌鎮ㄩ€夋嫨鐨勫ぇ妯″瀷鏈嶅姟銆?
-
-瀹屾垚涓婅堪鎵€鏈夐厤缃苟淇濆瓨鍚庯紝绯荤粺鍗冲彲姝ｅ父杩愯銆?
 
 ## 馃敡 婧愮爜鍚姩鎸囧崡
 

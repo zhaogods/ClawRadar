@@ -273,8 +273,6 @@ BettaFish/
 鈹溾攢鈹€ app.py                                  # Flask main application entry point
 鈹溾攢鈹€ config.py                               # Global configuration file
 鈹溾攢鈹€ ../.env.example                         # Environment variable example file in the ClawRadar repository root
-鈹溾攢鈹€ docker-compose.yml                      # Docker multi-service orchestration config
-鈹溾攢鈹€ Dockerfile                              # Docker image build file
 鈹溾攢鈹€ ../requirements.txt                     # Python dependency list in the ClawRadar repository root
 鈹溾攢鈹€ regenerate_latest_html.py               # Rebind latest chapters and render HTML
 鈹溾攢鈹€ regenerate_latest_md.py                 # Rebind latest chapters and render Markdown
@@ -286,42 +284,6 @@ BettaFish/
 鈹溾攢鈹€ CONTRIBUTING-EN.md                      # English contribution guide
 鈹斺攢鈹€ LICENSE                                 # GPL-2.0 open source license
 ```
-
-## 馃殌 Quick Start (Docker)
-
-> [!NOTE]
-> The instructions below describe how to run the `radar_engines/` subtree by itself. In the current ClawRadar repository, if you want the OpenClaw main flow, prefer the root-level `run_openclaw_deliverable.py` launcher and the top-level `clawradar/` package.
-
-### 1. Starting the Project
-
-**Run Command:** Execute the following command to start all services in the **background**:
-
-```bash
-docker compose up -d
-```
-
-> **Note: Slow image pull speed.** In the original `docker-compose.yml` file, we have provided alternative mirror image addresses as **comments** for you to replace with.
-
-### 2. Configuration Instructions
-
-#### Database Configuration (PostgreSQL)
-
-Configure the database connection information with the following parameters. The system also supports MySQL, so you can adjust the settings as needed:
-
-| Configuration Item | Value to Use | Description |
-| :--- | :--- | :--- |
-| `DB_HOST` | `db` | Database service name (as defined in `docker-compose.yml`) |
-| `DB_PORT` | `5432` | Default PostgreSQL port |
-| `DB_USER` | `bettafish` | Database username |
-| `DB_PASSWORD` | `bettafish` | Database password |
-| `DB_NAME` | `bettafish` | Database name |
-| **Others** | **Keep Default** | Please keep other parameters, such as database connection pool settings, at their default values. |
-
-### Large Language Model (LLM) Configuration
-
-All LLM calls use the OpenAI API interface standard. After you finish the database configuration, continue to configure **all LLM-related parameters** so the system can connect to your selected LLM service.
-
-Once you complete and save the configurations above, the system will be ready to run normally.
 
 ## 馃敡 Source Code Startup Guide
 
