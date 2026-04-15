@@ -16,9 +16,9 @@ services:
       - "8502:8502"
       - "8503:8503"
     volumes:
-      - ./outputs/logs:/app/outputs/logs
-      - ./outputs/final_reports:/app/outputs/final_reports
-      - ./.env:/app/.env  
+      - ../outputs/logs:/app/outputs/logs
+      - ../outputs/final_reports:/app/outputs/final_reports
+      - ../.env:/app/.env  
       - ./insight_engine_streamlit_reports:/app/insight_engine_streamlit_reports
       - ./media_engine_streamlit_reports:/app/media_engine_streamlit_reports
       - ./query_engine_streamlit_reports:/app/query_engine_streamlit_reports
@@ -28,7 +28,7 @@ services:
     container_name: bettafish-db
     restart: unless-stopped
     env_file:
-      - .env
+      - ../.env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-bettafish}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bettafish}

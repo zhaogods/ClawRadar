@@ -78,7 +78,7 @@ python -m venv .venv
 完整安装：
 
 ```bash
-python -m pip install -r radar_engines/requirements.txt
+python -m pip install -r requirements.txt
 python -m pip install pytest
 ```
 
@@ -89,7 +89,6 @@ python -m pip install pytest
 如果要跑 `real_source` 或 `external_writer`，通常还需要配置运行环境，例如：
 
 - 仓库根目录 `.env`
-- `radar_engines/.env`
 - 对应模型、接口或外部服务所需的凭证
 
 如果这些条件未满足，应明确报告“环境未就绪”或“依赖未满足”，不要把问题描述成 Skill 定义本身失效。

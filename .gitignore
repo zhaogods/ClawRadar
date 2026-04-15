@@ -1,4 +1,5 @@
 outputs/
+.env
 .validation_runs/
 final_reports/
 logs/

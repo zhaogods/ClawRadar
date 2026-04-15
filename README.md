@@ -116,12 +116,12 @@ ClawRadar/
 
 仓库顶层代码使用了 Python 3.10+ 语法，建议直接使用 Python 3.10 或 3.11。
 
-如果你只想跑顶层契约测试，最小依赖很少；如果你要启用 `real_source`、外部写作或完整的引擎能力，建议安装 `radar_engines/requirements.txt` 中的依赖。
+如果你只想跑顶层契约测试，最小依赖很少；如果你要启用 `real_source`、外部写作或完整的引擎能力，建议安装项目根目录 `requirements.txt` 中的依赖。
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r radar_engines/requirements.txt
+pip install -r requirements.txt
 pip install pytest
 ```
 

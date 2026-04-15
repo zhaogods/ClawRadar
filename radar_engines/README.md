@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 <img src="static/image/logo_compressed.png" alt="BettaFish Logo" width="100%">
 
@@ -19,395 +19,395 @@
 
 
 
-[English](./README-EN.md) | [中文文档](./README.md)
+[English](./README-EN.md) | [涓枃鏂囨。](./README.md)
 
 </div>
 
 > [!IMPORTANT]  
-> 查看我们最新发布的预测引擎：[MiroFish-简洁通用的群体智能引擎，预测万物](https://github.com/666ghj/MiroFish)
+> 鏌ョ湅鎴戜滑鏈€鏂板彂甯冪殑棰勬祴寮曟搸锛歔MiroFish-绠€娲侀€氱敤鐨勭兢浣撴櫤鑳藉紩鎿庯紝棰勬祴涓囩墿](https://github.com/666ghj/MiroFish)
 > 
 > <img src="static/image/MiroFish_logo_compressed.jpeg" alt="banner" width="300">
 >
-> “数据分析三板斧”全线贯通：我们激动的宣布 MiroFish 正式发布！随着最后一块版图补齐，我们构建了从 BettaFish（数据收集与分析）到 MiroFish（全景预测）的完整链路。至此，从原始数据到智能决策的闭环已成，让预见未来成为可能！
+> 鈥滄暟鎹垎鏋愪笁鏉挎枾鈥濆叏绾胯疮閫氾細鎴戜滑婵€鍔ㄧ殑瀹ｅ竷 MiroFish 姝ｅ紡鍙戝竷锛侀殢鐫€鏈€鍚庝竴鍧楃増鍥捐ˉ榻愶紝鎴戜滑鏋勫缓浜嗕粠 BettaFish锛堟暟鎹敹闆嗕笌鍒嗘瀽锛夊埌 MiroFish锛堝叏鏅娴嬶級鐨勫畬鏁撮摼璺€傝嚦姝わ紝浠庡師濮嬫暟鎹埌鏅鸿兘鍐崇瓥鐨勯棴鐜凡鎴愶紝璁╅瑙佹湭鏉ユ垚涓哄彲鑳斤紒
 
-## ⚡ 项目概述
+## 鈿?椤圭洰姒傝堪
 
 > [!NOTE]
-> 当前仓库的对外主项目壳已经切换到 `ClawRadar/` 根目录：顶层主包为 `clawradar/`，正式启动入口为 `run_openclaw_deliverable.py`。本目录当前名为 `radar_engines/`，在当前仓库中主要作为被复用的能力层与兼容层保留，包括 `MindSpider`、`QueryEngine`、`MediaEngine`、`ReportEngine` 等模块。
+> 褰撳墠浠撳簱鐨勫澶栦富椤圭洰澹冲凡缁忓垏鎹㈠埌 `ClawRadar/` 鏍圭洰褰曪細椤跺眰涓诲寘涓?`clawradar/`锛屾寮忓惎鍔ㄥ叆鍙ｄ负 `run_openclaw_deliverable.py`銆傛湰鐩綍褰撳墠鍚嶄负 `radar_engines/`锛屽湪褰撳墠浠撳簱涓富瑕佷綔涓鸿澶嶇敤鐨勮兘鍔涘眰涓庡吋瀹瑰眰淇濈暀锛屽寘鎷?`MindSpider`銆乣QueryEngine`銆乣MediaEngine`銆乣ReportEngine` 绛夋ā鍧椼€?
 
-“**微舆**” 是一个从0实现的创新型 多智能体 舆情分析系统，帮助大家破除信息茧房，还原舆情原貌，预测未来走向，辅助决策。用户只需像聊天一样提出分析需求，智能体开始全自动分析 国内外30+主流社媒 与 数百万条大众评论。
+鈥?*寰垎**鈥?鏄竴涓粠0瀹炵幇鐨勫垱鏂板瀷 澶氭櫤鑳戒綋 鑸嗘儏鍒嗘瀽绯荤粺锛屽府鍔╁ぇ瀹剁牬闄や俊鎭導鎴匡紝杩樺師鑸嗘儏鍘熻矊锛岄娴嬫湭鏉ヨ蛋鍚戯紝杈呭姪鍐崇瓥銆傜敤鎴峰彧闇€鍍忚亰澶╀竴鏍锋彁鍑哄垎鏋愰渶姹傦紝鏅鸿兘浣撳紑濮嬪叏鑷姩鍒嗘瀽 鍥藉唴澶?0+涓绘祦绀惧獟 涓?鏁扮櫨涓囨潯澶т紬璇勮銆?
 
-> “微舆”谐音“微鱼”，BettaFish是一种体型很小但非常好斗、漂亮的鱼，它象征着“小而强大，不畏挑战”
+> 鈥滃井鑸嗏€濊皭闊斥€滃井楸尖€濓紝BettaFish鏄竴绉嶄綋鍨嬪緢灏忎絾闈炲父濂芥枟銆佹紓浜殑楸硷紝瀹冭薄寰佺潃鈥滃皬鑰屽己澶э紝涓嶇晱鎸戞垬鈥?
 
-查看系统以“武汉大学舆情”为例，生成的研究报告：[武汉大学品牌声誉深度分析报告](./outputs/final_reports/final_report__20250827_131630.html)
+鏌ョ湅绯荤粺浠モ€滄姹夊ぇ瀛﹁垎鎯呪€濅负渚嬶紝鐢熸垚鐨勭爺绌舵姤鍛婏細[姝︽眽澶у鍝佺墝澹拌獕娣卞害鍒嗘瀽鎶ュ憡](./outputs/final_reports/final_report__20250827_131630.html)
 
-查看系统以“武汉大学舆情”为例，一次完整运行的视频：[视频-武汉大学品牌声誉深度分析报告](https://www.bilibili.com/video/BV1TH1WBxEWN/?vd_source=da3512187e242ce17dceee4c537ec7a6#reply279744466833)
+鏌ョ湅绯荤粺浠モ€滄姹夊ぇ瀛﹁垎鎯呪€濅负渚嬶紝涓€娆″畬鏁磋繍琛岀殑瑙嗛锛歔瑙嗛-姝︽眽澶у鍝佺墝澹拌獕娣卞害鍒嗘瀽鎶ュ憡](https://www.bilibili.com/video/BV1TH1WBxEWN/?vd_source=da3512187e242ce17dceee4c537ec7a6#reply279744466833)
 
-不仅仅体现在报告质量上，相比同类产品，我们拥有🚀六大优势：
+涓嶄粎浠呬綋鐜板湪鎶ュ憡璐ㄩ噺涓婏紝鐩告瘮鍚岀被浜у搧锛屾垜浠嫢鏈夝煔€鍏ぇ浼樺娍锛?
 
-1. **AI驱动的全域监控**：AI爬虫集群7x24小时不间断作业，全面覆盖微博、小红书、抖音、快手等10+国内外关键社媒。不仅实时捕获热点内容，更能下钻至海量用户评论，让您听到最真实、最广泛的大众声音。
+1. **AI椹卞姩鐨勫叏鍩熺洃鎺?*锛欰I鐖櫕闆嗙兢7x24灏忔椂涓嶉棿鏂綔涓氾紝鍏ㄩ潰瑕嗙洊寰崥銆佸皬绾功銆佹姈闊炽€佸揩鎵嬬瓑10+鍥藉唴澶栧叧閿ぞ濯掋€備笉浠呭疄鏃舵崟鑾风儹鐐瑰唴瀹癸紝鏇磋兘涓嬮捇鑷虫捣閲忕敤鎴疯瘎璁猴紝璁╂偍鍚埌鏈€鐪熷疄銆佹渶骞挎硾鐨勫ぇ浼楀０闊炽€?
 
-2. **超越LLM的复合分析引擎**：我们不仅依赖设计的5类专业Agent，更融合了微调模型、统计模型等中间件。通过多模型协同工作，确保了分析结果的深度、准度与多维视角。
+2. **瓒呰秺LLM鐨勫鍚堝垎鏋愬紩鎿?*锛氭垜浠笉浠呬緷璧栬璁＄殑5绫讳笓涓欰gent锛屾洿铻嶅悎浜嗗井璋冩ā鍨嬨€佺粺璁℃ā鍨嬬瓑涓棿浠躲€傞€氳繃澶氭ā鍨嬪崗鍚屽伐浣滐紝纭繚浜嗗垎鏋愮粨鏋滅殑娣卞害銆佸噯搴︿笌澶氱淮瑙嗚銆?
 
-3. **强大的多模态能力**：突破图文限制，能深度解析抖音、快手等短视频内容，并精准提取现代搜索引擎中的天气、日历、股票等结构化多模态信息卡片，让您全面掌握舆情动态。
+3. **寮哄ぇ鐨勫妯℃€佽兘鍔?*锛氱獊鐮村浘鏂囬檺鍒讹紝鑳芥繁搴﹁В鏋愭姈闊炽€佸揩鎵嬬瓑鐭棰戝唴瀹癸紝骞剁簿鍑嗘彁鍙栫幇浠ｆ悳绱㈠紩鎿庝腑鐨勫ぉ姘斻€佹棩鍘嗐€佽偂绁ㄧ瓑缁撴瀯鍖栧妯℃€佷俊鎭崱鐗囷紝璁╂偍鍏ㄩ潰鎺屾彙鑸嗘儏鍔ㄦ€併€?
 
-4. **Agent“论坛”协作机制**：为不同Agent赋予独特的工具集与思维模式，引入辩论主持人模型，通过“论坛”机制进行链式思维碰撞与辩论。这不仅避免了单一模型的思维局限与交流导致的同质化，更催生出更高质量的集体智能与决策支持。
+4. **Agent鈥滆鍧涒€濆崗浣滄満鍒?*锛氫负涓嶅悓Agent璧嬩簣鐙壒鐨勫伐鍏烽泦涓庢€濈淮妯″紡锛屽紩鍏ヨ京璁轰富鎸佷汉妯″瀷锛岄€氳繃鈥滆鍧涒€濇満鍒惰繘琛岄摼寮忔€濈淮纰版挒涓庤京璁恒€傝繖涓嶄粎閬垮厤浜嗗崟涓€妯″瀷鐨勬€濈淮灞€闄愪笌浜ゆ祦瀵艰嚧鐨勫悓璐ㄥ寲锛屾洿鍌敓鍑烘洿楂樿川閲忕殑闆嗕綋鏅鸿兘涓庡喅绛栨敮鎸併€?
 
-5. **公私域数据无缝融合**：平台不仅分析公开舆情，还提供高安全性的接口，支持您将内部业务数据库与舆情数据无缝集成。打通数据壁垒，为垂直业务提供“外部趋势+内部洞察”的强大分析能力。
+5. **鍏鍩熸暟鎹棤缂濊瀺鍚?*锛氬钩鍙颁笉浠呭垎鏋愬叕寮€鑸嗘儏锛岃繕鎻愪緵楂樺畨鍏ㄦ€х殑鎺ュ彛锛屾敮鎸佹偍灏嗗唴閮ㄤ笟鍔℃暟鎹簱涓庤垎鎯呮暟鎹棤缂濋泦鎴愩€傛墦閫氭暟鎹鍨掞紝涓哄瀭鐩翠笟鍔℃彁渚涒€滃閮ㄨ秼鍔?鍐呴儴娲炲療鈥濈殑寮哄ぇ鍒嗘瀽鑳藉姏銆?
 
-6. **轻量化与高扩展性框架**：基于纯Python模块化设计，实现轻量化、一键式部署。代码结构清晰，开发者可轻松集成自定义模型与业务逻辑，实现平台的快速扩展与深度定制。
+6. **杞婚噺鍖栦笌楂樻墿灞曟€ф鏋?*锛氬熀浜庣函Python妯″潡鍖栬璁★紝瀹炵幇杞婚噺鍖栥€佷竴閿紡閮ㄧ讲銆備唬鐮佺粨鏋勬竻鏅帮紝寮€鍙戣€呭彲杞绘澗闆嗘垚鑷畾涔夋ā鍨嬩笌涓氬姟閫昏緫锛屽疄鐜板钩鍙扮殑蹇€熸墿灞曚笌娣卞害瀹氬埗銆?
 
-**始于舆情，而不止于舆情**。“微舆”的目标，是成为驱动一切业务场景的简洁通用的数据分析引擎。
+**濮嬩簬鑸嗘儏锛岃€屼笉姝簬鑸嗘儏**銆傗€滃井鑸嗏€濈殑鐩爣锛屾槸鎴愪负椹卞姩涓€鍒囦笟鍔″満鏅殑绠€娲侀€氱敤鐨勬暟鎹垎鏋愬紩鎿庛€?
 
-> 举个例子. 你只需简单修改Agent工具集的api参数与prompt，就可以把他变成一个金融领域的市场分析系统
+> 涓句釜渚嬪瓙. 浣犲彧闇€绠€鍗曚慨鏀笰gent宸ュ叿闆嗙殑api鍙傛暟涓巔rompt锛屽氨鍙互鎶婁粬鍙樻垚涓€涓噾铻嶉鍩熺殑甯傚満鍒嗘瀽绯荤粺
 >
-> 附一个比较活跃的L站项目讨论帖：https://linux.do/t/topic/1009280
+> 闄勪竴涓瘮杈冩椿璺冪殑L绔欓」鐩璁哄笘锛歨ttps://linux.do/t/topic/1009280
 >
-> 查看L站佬友做的测评 [开源项目(微舆)与manus|minimax|ChatGPT|Perplexity对比](https://linux.do/t/topic/1148040)
+> 鏌ョ湅L绔欎浆鍙嬪仛鐨勬祴璇?[寮€婧愰」鐩?寰垎)涓巑anus|minimax|ChatGPT|Perplexity瀵规瘮](https://linux.do/t/topic/1148040)
 
 <div align="center">
 <img src="static/image/system_schematic.png" alt="banner" width="800">
 
-告别传统的数据看板，在“微舆”，一切由一个简单的问题开始，您只需像对话一样，提出您的分析需求
+鍛婂埆浼犵粺鐨勬暟鎹湅鏉匡紝鍦ㄢ€滃井鑸嗏€濓紝涓€鍒囩敱涓€涓畝鍗曠殑闂寮€濮嬶紝鎮ㄥ彧闇€鍍忓璇濅竴鏍凤紝鎻愬嚭鎮ㄧ殑鍒嗘瀽闇€姹?
 </div>
 
-## 🪄 赞助商
+## 馃獎 璧炲姪鍟?
 
-LLM模型API赞助：<a href="https://aihubmix.com/?aff=8Ds9" target="_blank"><img src="./static/image/logo_aihubmix.png" alt="666ghj%2FBettaFish | Trendshift" height="40"/></a>
+LLM妯″瀷API璧炲姪锛?a href="https://aihubmix.com/?aff=8Ds9" target="_blank"><img src="./static/image/logo_aihubmix.png" alt="666ghj%2FBettaFish | Trendshift" height="40"/></a>
 
 <details>
-<summary>AI联网搜索、文件解析及网页内容抓取等智能体核心能力提供商：</a><span style="margin-left: 10px"><a href="https://open.anspire.cn/?share_code=3E1FUOUH" target="_blank"><img src="./static/image/logo_anspire.png" alt="666ghj%2FBettaFish | Trendshift" height="50"/></a></summary>
-安思派开放平台(Anspire Open)是面向智能体时代的领先的基础设施提供商。我们为开发者提供构建强大智能体所需的核心能力栈，现已上线AI联网搜索【多版本，极具竞争力的价格】、文件解析【限免】及网页内容抓取【限免】、云端浏览器自动化（Anspire Browser Agent）【内测】、多轮改写等服务，持续为智能体连接并操作复杂的数字世界提供坚实基础。可无缝集成至Dify、Coze、元器等主流智能体平台。通过透明点数计费体系与模块化设计，为企业提供高效、低成本的定制化支持，加速智能化升级进程。
+<summary>AI鑱旂綉鎼滅储銆佹枃浠惰В鏋愬強缃戦〉鍐呭鎶撳彇绛夋櫤鑳戒綋鏍稿績鑳藉姏鎻愪緵鍟嗭細</a><span style="margin-left: 10px"><a href="https://open.anspire.cn/?share_code=3E1FUOUH" target="_blank"><img src="./static/image/logo_anspire.png" alt="666ghj%2FBettaFish | Trendshift" height="50"/></a></summary>
+瀹夋€濇淳寮€鏀惧钩鍙?Anspire Open)鏄潰鍚戞櫤鑳戒綋鏃朵唬鐨勯鍏堢殑鍩虹璁炬柦鎻愪緵鍟嗐€傛垜浠负寮€鍙戣€呮彁渚涙瀯寤哄己澶ф櫤鑳戒綋鎵€闇€鐨勬牳蹇冭兘鍔涙爤锛岀幇宸蹭笂绾緼I鑱旂綉鎼滅储銆愬鐗堟湰锛屾瀬鍏风珵浜夊姏鐨勪环鏍笺€戙€佹枃浠惰В鏋愩€愰檺鍏嶃€戝強缃戦〉鍐呭鎶撳彇銆愰檺鍏嶃€戙€佷簯绔祻瑙堝櫒鑷姩鍖栵紙Anspire Browser Agent锛夈€愬唴娴嬨€戙€佸杞敼鍐欑瓑鏈嶅姟锛屾寔缁负鏅鸿兘浣撹繛鎺ュ苟鎿嶄綔澶嶆潅鐨勬暟瀛椾笘鐣屾彁渚涘潥瀹炲熀纭€銆傚彲鏃犵紳闆嗘垚鑷矰ify銆丆oze銆佸厓鍣ㄧ瓑涓绘祦鏅鸿兘浣撳钩鍙般€傞€氳繃閫忔槑鐐规暟璁¤垂浣撶郴涓庢ā鍧楀寲璁捐锛屼负浼佷笟鎻愪緵楂樻晥銆佷綆鎴愭湰鐨勫畾鍒跺寲鏀寔锛屽姞閫熸櫤鑳藉寲鍗囩骇杩涚▼銆?
 </details>
 
-## 🏗️ 系统架构
+## 馃彈锔?绯荤粺鏋舵瀯
 
-### 整体架构图
+### 鏁翠綋鏋舵瀯鍥?
 
-**Insight Agent** 私有数据库挖掘：私有舆情数据库深度分析AI代理
+**Insight Agent** 绉佹湁鏁版嵁搴撴寲鎺橈細绉佹湁鑸嗘儏鏁版嵁搴撴繁搴﹀垎鏋怉I浠ｇ悊
 
-**Media Agent** 多模态内容分析：具备强大多模态能力的AI代理
+**Media Agent** 澶氭ā鎬佸唴瀹瑰垎鏋愶細鍏峰寮哄ぇ澶氭ā鎬佽兘鍔涚殑AI浠ｇ悊
 
-**Query Agent** 精准信息搜索：具备国内外网页搜索能力的AI代理
+**Query Agent** 绮惧噯淇℃伅鎼滅储锛氬叿澶囧浗鍐呭缃戦〉鎼滅储鑳藉姏鐨凙I浠ｇ悊
 
-**Report Agent** 智能报告生成：内置模板的多轮报告生成AI代理
+**Report Agent** 鏅鸿兘鎶ュ憡鐢熸垚锛氬唴缃ā鏉跨殑澶氳疆鎶ュ憡鐢熸垚AI浠ｇ悊
 
 <div align="center">
 <img src="static/image/framework.png" alt="banner" width="800">
 </div>
 
-### 一次完整分析流程
+### 涓€娆″畬鏁村垎鏋愭祦绋?
 
-| 步骤 | 阶段名称 | 主要操作 | 参与组件 | 循环特性 |
+| 姝ラ | 闃舵鍚嶇О | 涓昏鎿嶄綔 | 鍙備笌缁勪欢 | 寰幆鐗规€?|
 |------|----------|----------|----------|----------|
-| 1 | 用户提问 | Flask主应用接收查询 | Flask主应用 | - |
-| 2 | 并行启动 | 三个Agent同时开始工作 | Query Agent、Media Agent、Insight Agent | - |
-| 3 | 初步分析 | 各Agent使用专属工具进行概览搜索 | 各Agent + 专属工具集 | - |
-| 4 | 策略制定 | 基于初步结果制定分块研究策略 | 各Agent内部决策模块 | - |
-| 5-N | **循环阶段** | **论坛协作 + 深度研究** | **ForumEngine + 所有Agent** | **多轮循环** |
-| 5.1 | 深度研究 | 各Agent基于论坛主持人引导进行专项搜索 | 各Agent + 反思机制 + 论坛引导 | 每轮循环 |
-| 5.2 | 论坛协作 | ForumEngine监控Agent发言并生成主持人引导 | ForumEngine + LLM主持人 | 每轮循环 |
-| 5.3 | 交流融合 | 各Agent根据讨论调整研究方向 | 各Agent + forum_reader工具 | 每轮循环 |
-| N+1 | 结果整合 | Report Agent收集所有分析结果和论坛内容 | Report Agent | - |
-| N+2 | IR中间表示 | 动态选择模板和样式，多轮生成元数据，装订为IR中间表示 | Report Agent + 模板引擎 | - |
-| N+3 | 报告生成 | 分块进行质量检测，基于IR渲染成交互式 HTML 报告 | Report Agent + 装订引擎 | - |
+| 1 | 鐢ㄦ埛鎻愰棶 | Flask涓诲簲鐢ㄦ帴鏀舵煡璇?| Flask涓诲簲鐢?| - |
+| 2 | 骞惰鍚姩 | 涓変釜Agent鍚屾椂寮€濮嬪伐浣?| Query Agent銆丮edia Agent銆両nsight Agent | - |
+| 3 | 鍒濇鍒嗘瀽 | 鍚凙gent浣跨敤涓撳睘宸ュ叿杩涜姒傝鎼滅储 | 鍚凙gent + 涓撳睘宸ュ叿闆?| - |
+| 4 | 绛栫暐鍒跺畾 | 鍩轰簬鍒濇缁撴灉鍒跺畾鍒嗗潡鐮旂┒绛栫暐 | 鍚凙gent鍐呴儴鍐崇瓥妯″潡 | - |
+| 5-N | **寰幆闃舵** | **璁哄潧鍗忎綔 + 娣卞害鐮旂┒** | **ForumEngine + 鎵€鏈堿gent** | **澶氳疆寰幆** |
+| 5.1 | 娣卞害鐮旂┒ | 鍚凙gent鍩轰簬璁哄潧涓绘寔浜哄紩瀵艰繘琛屼笓椤规悳绱?| 鍚凙gent + 鍙嶆€濇満鍒?+ 璁哄潧寮曞 | 姣忚疆寰幆 |
+| 5.2 | 璁哄潧鍗忎綔 | ForumEngine鐩戞帶Agent鍙戣█骞剁敓鎴愪富鎸佷汉寮曞 | ForumEngine + LLM涓绘寔浜?| 姣忚疆寰幆 |
+| 5.3 | 浜ゆ祦铻嶅悎 | 鍚凙gent鏍规嵁璁ㄨ璋冩暣鐮旂┒鏂瑰悜 | 鍚凙gent + forum_reader宸ュ叿 | 姣忚疆寰幆 |
+| N+1 | 缁撴灉鏁村悎 | Report Agent鏀堕泦鎵€鏈夊垎鏋愮粨鏋滃拰璁哄潧鍐呭 | Report Agent | - |
+| N+2 | IR涓棿琛ㄧず | 鍔ㄦ€侀€夋嫨妯℃澘鍜屾牱寮忥紝澶氳疆鐢熸垚鍏冩暟鎹紝瑁呰涓篒R涓棿琛ㄧず | Report Agent + 妯℃澘寮曟搸 | - |
+| N+3 | 鎶ュ憡鐢熸垚 | 鍒嗗潡杩涜璐ㄩ噺妫€娴嬶紝鍩轰簬IR娓叉煋鎴愪氦浜掑紡 HTML 鎶ュ憡 | Report Agent + 瑁呰寮曟搸 | - |
 
-### 项目代码结构树
+### 椤圭洰浠ｇ爜缁撴瀯鏍?
 
 ```
 BettaFish/
-├── QueryEngine/                            # 国内外新闻广度搜索Agent
-│   ├── agent.py                            # Agent主逻辑，协调搜索与分析流程
-│   ├── llms/                               # LLM接口封装
-│   ├── nodes/                              # 处理节点：搜索、格式化、总结等
-│   ├── tools/                              # 国内外新闻搜索工具集
-│   ├── utils/                              # 工具函数
-│   ├── state/                              # 状态管理
-│   ├── prompts/                            # 提示词模板
-│   └── ...
-├── MediaEngine/                            # 强大的多模态理解Agent
-│   ├── agent.py                            # Agent主逻辑，处理视频/图片等多模态内容
-│   ├── llms/                               # LLM接口封装
-│   ├── nodes/                              # 处理节点：搜索、格式化、总结等
-│   ├── tools/                              # 多模态搜索工具集
-│   ├── utils/                              # 工具函数
-│   ├── state/                              # 状态管理
-│   ├── prompts/                            # 提示词模板
-│   └── ...
-├── InsightEngine/                          # 私有数据库挖掘Agent
-│   ├── agent.py                            # Agent主逻辑，协调数据库查询与分析
-│   ├── llms/                               # LLM接口封装
-│   │   └── base.py                         # 统一的OpenAI兼容客户端
-│   ├── nodes/                              # 处理节点：搜索、格式化、总结等
-│   │   ├── base_node.py                    # 基础节点类
-│   │   ├── search_node.py                  # 搜索节点
-│   │   ├── formatting_node.py              # 格式化节点
-│   │   ├── report_structure_node.py        # 报告结构节点
-│   │   └── summary_node.py                 # 总结节点
-│   ├── tools/                              # 数据库查询和分析工具集
-│   │   ├── keyword_optimizer.py            # Qwen关键词优化中间件
-│   │   ├── search.py                       # 数据库操作工具集（话题搜索、评论获取等）
-│   │   └── sentiment_analyzer.py           # 情感分析集成工具
-│   ├── utils/                              # 工具函数
-│   │   ├── config.py                       # 配置管理
-│   │   ├── db.py                           # SQLAlchemy异步引擎与只读查询封装
-│   │   └── text_processing.py              # 文本处理工具
-│   ├── state/                              # 状态管理
-│   │   └── state.py                        # Agent状态定义
-│   ├── prompts/                            # 提示词模板
-│   │   └── prompts.py                      # 各类提示词
-│   └── __init__.py
-├── ReportEngine/                           # 多轮报告生成Agent
-│   ├── agent.py                            # 总调度器：模板选择→布局→篇幅→章节→渲染
-│   ├── flask_interface.py                  # Flask/SSE入口，管理任务排队与流式事件
-│   ├── llms/                               # OpenAI兼容LLM封装
-│   │   └── base.py                         # 统一的流式/重试客户端
-│   ├── core/                               # 核心功能：模板解析、章节存储、文档装订
-│   │   ├── template_parser.py              # Markdown模板切片与slug生成
-│   │   ├── chapter_storage.py              # 章节run目录、manifest与raw流写入
-│   │   └── stitcher.py                     # Document IR装订器，补齐锚点/元数据
-│   ├── ir/                                 # 报告中间表示（IR）契约与校验
-│   │   ├── schema.py                       # 块/标记Schema常量定义
-│   │   └── validator.py                    # 章节JSON结构校验器
-│   ├── nodes/                              # 全流程推理节点
-│   │   ├── base_node.py                    # 节点基类+日志/状态钩子
-│   │   ├── template_selection_node.py      # 模板候选收集与LLM筛选
-│   │   ├── document_layout_node.py         # 标题/目录/主题设计
-│   │   ├── word_budget_node.py             # 篇幅规划与章节指令生成
-│   │   └── chapter_generation_node.py      # 章节级JSON生成+校验
-│   ├── prompts/                            # 提示词库与Schema说明
-│   │   └── prompts.py                      # 模板选择/布局/篇幅/章节提示词
-│   ├── renderers/                          # IR渲染器
-│   │   ├── html_renderer.py                # Document IR→交互式HTML
-│   │   ├── pdf_renderer.py                 # HTML→PDF导出（WeasyPrint）
-│   │   ├── pdf_layout_optimizer.py         # PDF布局优化器
-│   │   └── chart_to_svg.py                 # 图表转SVG工具
-│   ├── state/                              # 任务/元数据状态模型
-│   │   └── state.py                        # ReportState与序列化工具
-│   ├── utils/                              # 配置与辅助工具
-│   │   ├── config.py                       # Pydantic Settings与打印助手
-│   │   ├── dependency_check.py             # 依赖检查工具
-│   │   ├── json_parser.py                  # JSON解析工具
-│   │   ├── chart_validator.py              # 图表校验工具
-│   │   └── chart_repair_api.py             # 图表修复API
-│   ├── report_template/                    # Markdown模板库
-│   │   ├── 企业品牌声誉分析报告.md
-│   │   └── ...
-│   └── __init__.py
-├── ForumEngine/                            # 论坛引擎：Agent协作机制
-│   ├── monitor.py                          # 日志监控和论坛管理核心
-│   ├── llm_host.py                         # 论坛主持人LLM模块
-│   └── __init__.py
-├── MindSpider/                             # 社交媒体爬虫系统
-│   ├── main.py                             # 爬虫主程序入口
-│   ├── config.py                           # 爬虫配置文件
-│   ├── BroadTopicExtraction/               # 话题提取模块
-│   │   ├── main.py                         # 话题提取主程序
-│   │   ├── database_manager.py             # 数据库管理器
-│   │   ├── get_today_news.py               # 今日新闻获取
-│   │   └── topic_extractor.py              # 话题提取器
-│   ├── DeepSentimentCrawling/              # 深度舆情爬取模块
-│   │   ├── main.py                         # 深度爬取主程序
-│   │   ├── keyword_manager.py              # 关键词管理器
-│   │   ├── platform_crawler.py             # 平台爬虫管理
-│   │   └── MediaCrawler/                   # 社媒爬虫核心
-│   │       ├── main.py
-│   │       ├── config/                     # 各平台配置
-│   │       ├── media_platform/             # 各平台爬虫实现
-│   │       └── ...
-│   └── schema/                             # 数据库结构定义
-│       ├── db_manager.py                   # 数据库管理器
-│       ├── init_database.py                # 数据库初始化脚本
-│       ├── mindspider_tables.sql           # 数据库表结构SQL
-│       ├── models_bigdata.py               # 大规模媒体舆情表的SQLAlchemy映射
-│       └── models_sa.py                    # DailyTopic/Task等扩展表ORM模型
-├── SentimentAnalysisModel/                 # 情感分析模型集合
-│   ├── WeiboSentiment_Finetuned/           # 微调BERT/GPT-2模型
-│   │   ├── BertChinese-Lora/               # BERT中文LoRA微调
-│   │   │   ├── train.py
-│   │   │   ├── predict.py
-│   │   │   └── ...
-│   │   └── GPT2-Lora/                      # GPT-2 LoRA微调
-│   │       ├── train.py
-│   │       ├── predict.py
-│   │       └── ...
-│   ├── WeiboMultilingualSentiment/         # 多语言情感分析
-│   │   ├── train.py
-│   │   ├── predict.py
-│   │   └── ...
-│   ├── WeiboSentiment_SmallQwen/           # 小参数Qwen3微调
-│   │   ├── train.py
-│   │   ├── predict_universal.py
-│   │   └── ...
-│   └── WeiboSentiment_MachineLearning/     # 传统机器学习方法
-│       ├── train.py
-│       ├── predict.py
-│       └── ...
-├── SingleEngineApp/                        # 单独Agent的Streamlit应用
-│   ├── query_engine_streamlit_app.py       # QueryEngine独立应用
-│   ├── media_engine_streamlit_app.py       # MediaEngine独立应用
-│   └── insight_engine_streamlit_app.py     # InsightEngine独立应用
-├── query_engine_streamlit_reports/         # QueryEngine单应用运行输出
-├── media_engine_streamlit_reports/         # MediaEngine单应用运行输出
-├── insight_engine_streamlit_reports/       # InsightEngine单应用运行输出
-├── templates/                              # Flask前端模板
-│   └── index.html                          # 主界面HTML
-├── static/                                 # 静态资源
-│   ├── image/                              # 图片资源
-│   │   └── ...
-│   ├── Partial README for PDF Exporting/   # PDF导出依赖配置说明
-│   └── v2_report_example/                  # 报告渲染示例
-│       └── report_all_blocks_demo/         # 全块类型演示（HTML/PDF/MD）
-├── outputs/                                # 统一输出目录
-│   ├── logs/                               # 主运行日志、forum.log、ReportEngine日志
-│   └── final_reports/                      # 最终生成的报告文件
-│       ├── ir/                             # 报告IR JSON文件
-│       └── *.html                          # 最终HTML报告
-├── utils/                                  # 通用工具函数
-│   ├── forum_reader.py                     # Agent间论坛通信工具
-│   ├── github_issues.py                    # 统一生成GitHub Issue链接与错误提示
-│   └── retry_helper.py                     # 网络请求重试机制工具
-├── tests/                                  # 单元测试与集成测试
-│   ├── run_tests.py                        # pytest入口脚本
-│   ├── test_monitor.py                     # ForumEngine监控单元测试
-│   └── ...
-├── app.py                                  # Flask主应用入口
-├── config.py                               # 全局配置文件
-├── .env.example                            # 环境变量示例文件
-├── docker-compose.yml                      # Docker多服务编排配置
-├── Dockerfile                              # Docker镜像构建文件
-├── requirements.txt                        # Python依赖包清单
-├── regenerate_latest_html.py               # 使用最新章节重装订并渲染HTML
-├── regenerate_latest_md.py                 # 使用最新章节重装订并渲染Markdown
-├── regenerate_latest_pdf.py                # PDF重新生成工具脚本
-├── report_engine_only.py                   # Report Engine命令行版本
-├── README.md                               # 中文说明文档
-├── README-EN.md                            # 英文说明文档
-├── CONTRIBUTING.md                         # 中文贡献指南
-├── CONTRIBUTING-EN.md                      # 英文贡献指南
-└── LICENSE                                 # GPL-2.0开源许可证
+鈹溾攢鈹€ QueryEngine/                            # 鍥藉唴澶栨柊闂诲箍搴︽悳绱gent
+鈹?  鈹溾攢鈹€ agent.py                            # Agent涓婚€昏緫锛屽崗璋冩悳绱笌鍒嗘瀽娴佺▼
+鈹?  鈹溾攢鈹€ llms/                               # LLM鎺ュ彛灏佽
+鈹?  鈹溾攢鈹€ nodes/                              # 澶勭悊鑺傜偣锛氭悳绱€佹牸寮忓寲銆佹€荤粨绛?
+鈹?  鈹溾攢鈹€ tools/                              # 鍥藉唴澶栨柊闂绘悳绱㈠伐鍏烽泦
+鈹?  鈹溾攢鈹€ utils/                              # 宸ュ叿鍑芥暟
+鈹?  鈹溾攢鈹€ state/                              # 鐘舵€佺鐞?
+鈹?  鈹溾攢鈹€ prompts/                            # 鎻愮ず璇嶆ā鏉?
+鈹?  鈹斺攢鈹€ ...
+鈹溾攢鈹€ MediaEngine/                            # 寮哄ぇ鐨勫妯℃€佺悊瑙gent
+鈹?  鈹溾攢鈹€ agent.py                            # Agent涓婚€昏緫锛屽鐞嗚棰?鍥剧墖绛夊妯℃€佸唴瀹?
+鈹?  鈹溾攢鈹€ llms/                               # LLM鎺ュ彛灏佽
+鈹?  鈹溾攢鈹€ nodes/                              # 澶勭悊鑺傜偣锛氭悳绱€佹牸寮忓寲銆佹€荤粨绛?
+鈹?  鈹溾攢鈹€ tools/                              # 澶氭ā鎬佹悳绱㈠伐鍏烽泦
+鈹?  鈹溾攢鈹€ utils/                              # 宸ュ叿鍑芥暟
+鈹?  鈹溾攢鈹€ state/                              # 鐘舵€佺鐞?
+鈹?  鈹溾攢鈹€ prompts/                            # 鎻愮ず璇嶆ā鏉?
+鈹?  鈹斺攢鈹€ ...
+鈹溾攢鈹€ InsightEngine/                          # 绉佹湁鏁版嵁搴撴寲鎺楢gent
+鈹?  鈹溾攢鈹€ agent.py                            # Agent涓婚€昏緫锛屽崗璋冩暟鎹簱鏌ヨ涓庡垎鏋?
+鈹?  鈹溾攢鈹€ llms/                               # LLM鎺ュ彛灏佽
+鈹?  鈹?  鈹斺攢鈹€ base.py                         # 缁熶竴鐨凮penAI鍏煎瀹㈡埛绔?
+鈹?  鈹溾攢鈹€ nodes/                              # 澶勭悊鑺傜偣锛氭悳绱€佹牸寮忓寲銆佹€荤粨绛?
+鈹?  鈹?  鈹溾攢鈹€ base_node.py                    # 鍩虹鑺傜偣绫?
+鈹?  鈹?  鈹溾攢鈹€ search_node.py                  # 鎼滅储鑺傜偣
+鈹?  鈹?  鈹溾攢鈹€ formatting_node.py              # 鏍煎紡鍖栬妭鐐?
+鈹?  鈹?  鈹溾攢鈹€ report_structure_node.py        # 鎶ュ憡缁撴瀯鑺傜偣
+鈹?  鈹?  鈹斺攢鈹€ summary_node.py                 # 鎬荤粨鑺傜偣
+鈹?  鈹溾攢鈹€ tools/                              # 鏁版嵁搴撴煡璇㈠拰鍒嗘瀽宸ュ叿闆?
+鈹?  鈹?  鈹溾攢鈹€ keyword_optimizer.py            # Qwen鍏抽敭璇嶄紭鍖栦腑闂翠欢
+鈹?  鈹?  鈹溾攢鈹€ search.py                       # 鏁版嵁搴撴搷浣滃伐鍏烽泦锛堣瘽棰樻悳绱€佽瘎璁鸿幏鍙栫瓑锛?
+鈹?  鈹?  鈹斺攢鈹€ sentiment_analyzer.py           # 鎯呮劅鍒嗘瀽闆嗘垚宸ュ叿
+鈹?  鈹溾攢鈹€ utils/                              # 宸ュ叿鍑芥暟
+鈹?  鈹?  鈹溾攢鈹€ config.py                       # 閰嶇疆绠＄悊
+鈹?  鈹?  鈹溾攢鈹€ db.py                           # SQLAlchemy寮傛寮曟搸涓庡彧璇绘煡璇㈠皝瑁?
+鈹?  鈹?  鈹斺攢鈹€ text_processing.py              # 鏂囨湰澶勭悊宸ュ叿
+鈹?  鈹溾攢鈹€ state/                              # 鐘舵€佺鐞?
+鈹?  鈹?  鈹斺攢鈹€ state.py                        # Agent鐘舵€佸畾涔?
+鈹?  鈹溾攢鈹€ prompts/                            # 鎻愮ず璇嶆ā鏉?
+鈹?  鈹?  鈹斺攢鈹€ prompts.py                      # 鍚勭被鎻愮ず璇?
+鈹?  鈹斺攢鈹€ __init__.py
+鈹溾攢鈹€ ReportEngine/                           # 澶氳疆鎶ュ憡鐢熸垚Agent
+鈹?  鈹溾攢鈹€ agent.py                            # 鎬昏皟搴﹀櫒锛氭ā鏉块€夋嫨鈫掑竷灞€鈫掔瘒骞呪啋绔犺妭鈫掓覆鏌?
+鈹?  鈹溾攢鈹€ flask_interface.py                  # Flask/SSE鍏ュ彛锛岀鐞嗕换鍔℃帓闃熶笌娴佸紡浜嬩欢
+鈹?  鈹溾攢鈹€ llms/                               # OpenAI鍏煎LLM灏佽
+鈹?  鈹?  鈹斺攢鈹€ base.py                         # 缁熶竴鐨勬祦寮?閲嶈瘯瀹㈡埛绔?
+鈹?  鈹溾攢鈹€ core/                               # 鏍稿績鍔熻兘锛氭ā鏉胯В鏋愩€佺珷鑺傚瓨鍌ㄣ€佹枃妗ｈ璁?
+鈹?  鈹?  鈹溾攢鈹€ template_parser.py              # Markdown妯℃澘鍒囩墖涓巗lug鐢熸垚
+鈹?  鈹?  鈹溾攢鈹€ chapter_storage.py              # 绔犺妭run鐩綍銆乵anifest涓巖aw娴佸啓鍏?
+鈹?  鈹?  鈹斺攢鈹€ stitcher.py                     # Document IR瑁呰鍣紝琛ラ綈閿氱偣/鍏冩暟鎹?
+鈹?  鈹溾攢鈹€ ir/                                 # 鎶ュ憡涓棿琛ㄧず锛圛R锛夊绾︿笌鏍￠獙
+鈹?  鈹?  鈹溾攢鈹€ schema.py                       # 鍧?鏍囪Schema甯搁噺瀹氫箟
+鈹?  鈹?  鈹斺攢鈹€ validator.py                    # 绔犺妭JSON缁撴瀯鏍￠獙鍣?
+鈹?  鈹溾攢鈹€ nodes/                              # 鍏ㄦ祦绋嬫帹鐞嗚妭鐐?
+鈹?  鈹?  鈹溾攢鈹€ base_node.py                    # 鑺傜偣鍩虹被+鏃ュ織/鐘舵€侀挬瀛?
+鈹?  鈹?  鈹溾攢鈹€ template_selection_node.py      # 妯℃澘鍊欓€夋敹闆嗕笌LLM绛涢€?
+鈹?  鈹?  鈹溾攢鈹€ document_layout_node.py         # 鏍囬/鐩綍/涓婚璁捐
+鈹?  鈹?  鈹溾攢鈹€ word_budget_node.py             # 绡囧箙瑙勫垝涓庣珷鑺傛寚浠ょ敓鎴?
+鈹?  鈹?  鈹斺攢鈹€ chapter_generation_node.py      # 绔犺妭绾SON鐢熸垚+鏍￠獙
+鈹?  鈹溾攢鈹€ prompts/                            # 鎻愮ず璇嶅簱涓嶴chema璇存槑
+鈹?  鈹?  鈹斺攢鈹€ prompts.py                      # 妯℃澘閫夋嫨/甯冨眬/绡囧箙/绔犺妭鎻愮ず璇?
+鈹?  鈹溾攢鈹€ renderers/                          # IR娓叉煋鍣?
+鈹?  鈹?  鈹溾攢鈹€ html_renderer.py                # Document IR鈫掍氦浜掑紡HTML
+鈹?  鈹?  鈹溾攢鈹€ pdf_renderer.py                 # HTML鈫扨DF瀵煎嚭锛圵easyPrint锛?
+鈹?  鈹?  鈹溾攢鈹€ pdf_layout_optimizer.py         # PDF甯冨眬浼樺寲鍣?
+鈹?  鈹?  鈹斺攢鈹€ chart_to_svg.py                 # 鍥捐〃杞琒VG宸ュ叿
+鈹?  鈹溾攢鈹€ state/                              # 浠诲姟/鍏冩暟鎹姸鎬佹ā鍨?
+鈹?  鈹?  鈹斺攢鈹€ state.py                        # ReportState涓庡簭鍒楀寲宸ュ叿
+鈹?  鈹溾攢鈹€ utils/                              # 閰嶇疆涓庤緟鍔╁伐鍏?
+鈹?  鈹?  鈹溾攢鈹€ config.py                       # Pydantic Settings涓庢墦鍗板姪鎵?
+鈹?  鈹?  鈹溾攢鈹€ dependency_check.py             # 渚濊禆妫€鏌ュ伐鍏?
+鈹?  鈹?  鈹溾攢鈹€ json_parser.py                  # JSON瑙ｆ瀽宸ュ叿
+鈹?  鈹?  鈹溾攢鈹€ chart_validator.py              # 鍥捐〃鏍￠獙宸ュ叿
+鈹?  鈹?  鈹斺攢鈹€ chart_repair_api.py             # 鍥捐〃淇API
+鈹?  鈹溾攢鈹€ report_template/                    # Markdown妯℃澘搴?
+鈹?  鈹?  鈹溾攢鈹€ 浼佷笟鍝佺墝澹拌獕鍒嗘瀽鎶ュ憡.md
+鈹?  鈹?  鈹斺攢鈹€ ...
+鈹?  鈹斺攢鈹€ __init__.py
+鈹溾攢鈹€ ForumEngine/                            # 璁哄潧寮曟搸锛欰gent鍗忎綔鏈哄埗
+鈹?  鈹溾攢鈹€ monitor.py                          # 鏃ュ織鐩戞帶鍜岃鍧涚鐞嗘牳蹇?
+鈹?  鈹溾攢鈹€ llm_host.py                         # 璁哄潧涓绘寔浜篖LM妯″潡
+鈹?  鈹斺攢鈹€ __init__.py
+鈹溾攢鈹€ MindSpider/                             # 绀句氦濯掍綋鐖櫕绯荤粺
+鈹?  鈹溾攢鈹€ main.py                             # 鐖櫕涓荤▼搴忓叆鍙?
+鈹?  鈹溾攢鈹€ config.py                           # 鐖櫕閰嶇疆鏂囦欢
+鈹?  鈹溾攢鈹€ BroadTopicExtraction/               # 璇濋鎻愬彇妯″潡
+鈹?  鈹?  鈹溾攢鈹€ main.py                         # 璇濋鎻愬彇涓荤▼搴?
+鈹?  鈹?  鈹溾攢鈹€ database_manager.py             # 鏁版嵁搴撶鐞嗗櫒
+鈹?  鈹?  鈹溾攢鈹€ get_today_news.py               # 浠婃棩鏂伴椈鑾峰彇
+鈹?  鈹?  鈹斺攢鈹€ topic_extractor.py              # 璇濋鎻愬彇鍣?
+鈹?  鈹溾攢鈹€ DeepSentimentCrawling/              # 娣卞害鑸嗘儏鐖彇妯″潡
+鈹?  鈹?  鈹溾攢鈹€ main.py                         # 娣卞害鐖彇涓荤▼搴?
+鈹?  鈹?  鈹溾攢鈹€ keyword_manager.py              # 鍏抽敭璇嶇鐞嗗櫒
+鈹?  鈹?  鈹溾攢鈹€ platform_crawler.py             # 骞冲彴鐖櫕绠＄悊
+鈹?  鈹?  鈹斺攢鈹€ MediaCrawler/                   # 绀惧獟鐖櫕鏍稿績
+鈹?  鈹?      鈹溾攢鈹€ main.py
+鈹?  鈹?      鈹溾攢鈹€ config/                     # 鍚勫钩鍙伴厤缃?
+鈹?  鈹?      鈹溾攢鈹€ media_platform/             # 鍚勫钩鍙扮埇铏疄鐜?
+鈹?  鈹?      鈹斺攢鈹€ ...
+鈹?  鈹斺攢鈹€ schema/                             # 鏁版嵁搴撶粨鏋勫畾涔?
+鈹?      鈹溾攢鈹€ db_manager.py                   # 鏁版嵁搴撶鐞嗗櫒
+鈹?      鈹溾攢鈹€ init_database.py                # 鏁版嵁搴撳垵濮嬪寲鑴氭湰
+鈹?      鈹溾攢鈹€ mindspider_tables.sql           # 鏁版嵁搴撹〃缁撴瀯SQL
+鈹?      鈹溾攢鈹€ models_bigdata.py               # 澶ц妯″獟浣撹垎鎯呰〃鐨凷QLAlchemy鏄犲皠
+鈹?      鈹斺攢鈹€ models_sa.py                    # DailyTopic/Task绛夋墿灞曡〃ORM妯″瀷
+鈹溾攢鈹€ SentimentAnalysisModel/                 # 鎯呮劅鍒嗘瀽妯″瀷闆嗗悎
+鈹?  鈹溾攢鈹€ WeiboSentiment_Finetuned/           # 寰皟BERT/GPT-2妯″瀷
+鈹?  鈹?  鈹溾攢鈹€ BertChinese-Lora/               # BERT涓枃LoRA寰皟
+鈹?  鈹?  鈹?  鈹溾攢鈹€ train.py
+鈹?  鈹?  鈹?  鈹溾攢鈹€ predict.py
+鈹?  鈹?  鈹?  鈹斺攢鈹€ ...
+鈹?  鈹?  鈹斺攢鈹€ GPT2-Lora/                      # GPT-2 LoRA寰皟
+鈹?  鈹?      鈹溾攢鈹€ train.py
+鈹?  鈹?      鈹溾攢鈹€ predict.py
+鈹?  鈹?      鈹斺攢鈹€ ...
+鈹?  鈹溾攢鈹€ WeiboMultilingualSentiment/         # 澶氳瑷€鎯呮劅鍒嗘瀽
+鈹?  鈹?  鈹溾攢鈹€ train.py
+鈹?  鈹?  鈹溾攢鈹€ predict.py
+鈹?  鈹?  鈹斺攢鈹€ ...
+鈹?  鈹溾攢鈹€ WeiboSentiment_SmallQwen/           # 灏忓弬鏁癚wen3寰皟
+鈹?  鈹?  鈹溾攢鈹€ train.py
+鈹?  鈹?  鈹溾攢鈹€ predict_universal.py
+鈹?  鈹?  鈹斺攢鈹€ ...
+鈹?  鈹斺攢鈹€ WeiboSentiment_MachineLearning/     # 浼犵粺鏈哄櫒瀛︿範鏂规硶
+鈹?      鈹溾攢鈹€ train.py
+鈹?      鈹溾攢鈹€ predict.py
+鈹?      鈹斺攢鈹€ ...
+鈹溾攢鈹€ SingleEngineApp/                        # 鍗曠嫭Agent鐨凷treamlit搴旂敤
+鈹?  鈹溾攢鈹€ query_engine_streamlit_app.py       # QueryEngine鐙珛搴旂敤
+鈹?  鈹溾攢鈹€ media_engine_streamlit_app.py       # MediaEngine鐙珛搴旂敤
+鈹?  鈹斺攢鈹€ insight_engine_streamlit_app.py     # InsightEngine鐙珛搴旂敤
+鈹溾攢鈹€ query_engine_streamlit_reports/         # QueryEngine鍗曞簲鐢ㄨ繍琛岃緭鍑?
+鈹溾攢鈹€ media_engine_streamlit_reports/         # MediaEngine鍗曞簲鐢ㄨ繍琛岃緭鍑?
+鈹溾攢鈹€ insight_engine_streamlit_reports/       # InsightEngine鍗曞簲鐢ㄨ繍琛岃緭鍑?
+鈹溾攢鈹€ templates/                              # Flask鍓嶇妯℃澘
+鈹?  鈹斺攢鈹€ index.html                          # 涓荤晫闈TML
+鈹溾攢鈹€ static/                                 # 闈欐€佽祫婧?
+鈹?  鈹溾攢鈹€ image/                              # 鍥剧墖璧勬簮
+鈹?  鈹?  鈹斺攢鈹€ ...
+鈹?  鈹溾攢鈹€ Partial README for PDF Exporting/   # PDF瀵煎嚭渚濊禆閰嶇疆璇存槑
+鈹?  鈹斺攢鈹€ v2_report_example/                  # 鎶ュ憡娓叉煋绀轰緥
+鈹?      鈹斺攢鈹€ report_all_blocks_demo/         # 鍏ㄥ潡绫诲瀷婕旂ず锛圚TML/PDF/MD锛?
+鈹溾攢鈹€ outputs/                                # 缁熶竴杈撳嚭鐩綍
+鈹?  鈹溾攢鈹€ logs/                               # 涓昏繍琛屾棩蹇椼€乫orum.log銆丷eportEngine鏃ュ織
+鈹?  鈹斺攢鈹€ final_reports/                      # 鏈€缁堢敓鎴愮殑鎶ュ憡鏂囦欢
+鈹?      鈹溾攢鈹€ ir/                             # 鎶ュ憡IR JSON鏂囦欢
+鈹?      鈹斺攢鈹€ *.html                          # 鏈€缁圚TML鎶ュ憡
+鈹溾攢鈹€ utils/                                  # 閫氱敤宸ュ叿鍑芥暟
+鈹?  鈹溾攢鈹€ forum_reader.py                     # Agent闂磋鍧涢€氫俊宸ュ叿
+鈹?  鈹溾攢鈹€ github_issues.py                    # 缁熶竴鐢熸垚GitHub Issue閾炬帴涓庨敊璇彁绀?
+鈹?  鈹斺攢鈹€ retry_helper.py                     # 缃戠粶璇锋眰閲嶈瘯鏈哄埗宸ュ叿
+鈹溾攢鈹€ tests/                                  # 鍗曞厓娴嬭瘯涓庨泦鎴愭祴璇?
+鈹?  鈹溾攢鈹€ run_tests.py                        # pytest鍏ュ彛鑴氭湰
+鈹?  鈹溾攢鈹€ test_monitor.py                     # ForumEngine鐩戞帶鍗曞厓娴嬭瘯
+鈹?  鈹斺攢鈹€ ...
+鈹溾攢鈹€ app.py                                  # Flask涓诲簲鐢ㄥ叆鍙?
+鈹溾攢鈹€ config.py                               # 鍏ㄥ眬閰嶇疆鏂囦欢
+鈹溾攢鈹€ ../.env.example                         # ClawRadar 浠撳簱鏍圭洰褰曠殑鐜鍙橀噺绀轰緥鏂囦欢
+鈹溾攢鈹€ docker-compose.yml                      # Docker澶氭湇鍔＄紪鎺掗厤缃?
+鈹溾攢鈹€ Dockerfile                              # Docker闀滃儚鏋勫缓鏂囦欢
+鈹溾攢鈹€ ../requirements.txt                     # ClawRadar 浠撳簱鏍圭洰褰曠殑 Python 渚濊禆鍖呮竻鍗?
+鈹溾攢鈹€ regenerate_latest_html.py               # 浣跨敤鏈€鏂扮珷鑺傞噸瑁呰骞舵覆鏌揌TML
+鈹溾攢鈹€ regenerate_latest_md.py                 # 浣跨敤鏈€鏂扮珷鑺傞噸瑁呰骞舵覆鏌揗arkdown
+鈹溾攢鈹€ regenerate_latest_pdf.py                # PDF閲嶆柊鐢熸垚宸ュ叿鑴氭湰
+鈹溾攢鈹€ report_engine_only.py                   # Report Engine鍛戒护琛岀増鏈?
+鈹溾攢鈹€ README.md                               # 涓枃璇存槑鏂囨。
+鈹溾攢鈹€ README-EN.md                            # 鑻辨枃璇存槑鏂囨。
+鈹溾攢鈹€ CONTRIBUTING.md                         # 涓枃璐＄尞鎸囧崡
+鈹溾攢鈹€ CONTRIBUTING-EN.md                      # 鑻辨枃璐＄尞鎸囧崡
+鈹斺攢鈹€ LICENSE                                 # GPL-2.0寮€婧愯鍙瘉
 ```
 
-## 🚀 快速开始（Docker）
+## 馃殌 蹇€熷紑濮嬶紙Docker锛?
 
 > [!NOTE]
-> 以下内容描述的是 `radar_engines/` 子目录自身的独立运行方式。在当前 ClawRadar 仓库中，如果你要走 OpenClaw 主线，请优先使用仓库根目录的 `run_openclaw_deliverable.py` 与顶层 `clawradar/`。
+> 浠ヤ笅鍐呭鎻忚堪鐨勬槸 `radar_engines/` 瀛愮洰褰曡嚜韬殑鐙珛杩愯鏂瑰紡銆傚湪褰撳墠 ClawRadar 浠撳簱涓紝濡傛灉浣犺璧?OpenClaw 涓荤嚎锛岃浼樺厛浣跨敤浠撳簱鏍圭洰褰曠殑 `run_openclaw_deliverable.py` 涓庨《灞?`clawradar/`銆?
 
-### 1. 启动项目
+### 1. 鍚姩椤圭洰
 
-复制一份 `.env.example` 文件，命名为 `.env` ，并按需配置 `.env` 文件中的环境变量
+澶嶅埗涓€浠介」鐩牴鐩綍 `.env.example` 鏂囦欢锛屽懡鍚嶄负 `.env` 锛屽苟鎸夐渶閰嶇疆 `.env` 鏂囦欢涓殑鐜鍙橀噺
 
-执行以下命令在后台启动所有服务：
+鎵ц浠ヤ笅鍛戒护鍦ㄥ悗鍙板惎鍔ㄦ墍鏈夋湇鍔★細
 
 ```bash
 docker compose up -d
 ```
 
-> **注：镜像拉取速度慢**，在原 `docker-compose.yml` 文件中，我们已经通过**注释**的方式提供了备用镜像地址供您替换
+> **娉細闀滃儚鎷夊彇閫熷害鎱?*锛屽湪鍘?`docker-compose.yml` 鏂囦欢涓紝鎴戜滑宸茬粡閫氳繃**娉ㄩ噴**鐨勬柟寮忔彁渚涗簡澶囩敤闀滃儚鍦板潃渚涙偍鏇挎崲
 
-### 2. 配置说明
+### 2. 閰嶇疆璇存槑
 
-#### 数据库配置（PostgreSQL）
+#### 鏁版嵁搴撻厤缃紙PostgreSQL锛?
 
-请按照以下参数配置数据库连接信息，也支持Mysql可自行修改：
+璇锋寜鐓т互涓嬪弬鏁伴厤缃暟鎹簱杩炴帴淇℃伅锛屼篃鏀寔Mysql鍙嚜琛屼慨鏀癸細
 
-| 配置项 | 填写值 | 说明 |
+| 閰嶇疆椤?| 濉啓鍊?| 璇存槑 |
 | :--- | :--- | :--- |
-| `DB_HOST` | `db` | 数据库服务名称 (对应 `docker-compose.yml` 中的服务名) |
-| `DB_PORT` | `5432` | 默认 PostgreSQL 端口 |
-| `DB_USER` | `bettafish` | 数据库用户名 |
-| `DB_PASSWORD` | `bettafish` | 数据库密码 |
-| `DB_NAME` | `bettafish` | 数据库名称 |
-| **其他** | **保持默认** | 数据库连接池等其他参数请保持默认设置。 |
+| `DB_HOST` | `db` | 鏁版嵁搴撴湇鍔″悕绉?(瀵瑰簲 `docker-compose.yml` 涓殑鏈嶅姟鍚? |
+| `DB_PORT` | `5432` | 榛樿 PostgreSQL 绔彛 |
+| `DB_USER` | `bettafish` | 鏁版嵁搴撶敤鎴峰悕 |
+| `DB_PASSWORD` | `bettafish` | 鏁版嵁搴撳瘑鐮?|
+| `DB_NAME` | `bettafish` | 鏁版嵁搴撳悕绉?|
+| **鍏朵粬** | **淇濇寔榛樿** | 鏁版嵁搴撹繛鎺ユ睜绛夊叾浠栧弬鏁拌淇濇寔榛樿璁剧疆銆?|
 
-#### 大模型配置
+#### 澶фā鍨嬮厤缃?
 
-> 我们所有 LLM 调用使用 OpenAI 的 API 接口标准
+> 鎴戜滑鎵€鏈?LLM 璋冪敤浣跨敤 OpenAI 鐨?API 鎺ュ彛鏍囧噯
 
-在完成数据库配置后，请正常配置**所有大模型相关的参数**，确保系统能够连接到您选择的大模型服务。
+鍦ㄥ畬鎴愭暟鎹簱閰嶇疆鍚庯紝璇锋甯搁厤缃?*鎵€鏈夊ぇ妯″瀷鐩稿叧鐨勫弬鏁?*锛岀‘淇濈郴缁熻兘澶熻繛鎺ュ埌鎮ㄩ€夋嫨鐨勫ぇ妯″瀷鏈嶅姟銆?
 
-完成上述所有配置并保存后，系统即可正常运行。
+瀹屾垚涓婅堪鎵€鏈夐厤缃苟淇濆瓨鍚庯紝绯荤粺鍗冲彲姝ｅ父杩愯銆?
 
-## 🔧 源码启动指南
+## 馃敡 婧愮爜鍚姩鎸囧崡
 
-> 如果你是初次学习一个Agent系统的搭建，可以从一个非常简单的demo开始：[Deep Search Agent Demo](https://github.com/666ghj/DeepSearchAgent-Demo)
+> 濡傛灉浣犳槸鍒濇瀛︿範涓€涓狝gent绯荤粺鐨勬惌寤猴紝鍙互浠庝竴涓潪甯哥畝鍗曠殑demo寮€濮嬶細[Deep Search Agent Demo](https://github.com/666ghj/DeepSearchAgent-Demo)
 
-### 环境要求
+### 鐜瑕佹眰
 
-- **操作系统**: Windows、Linux、MacOS
-- **Python版本**: 3.9+
-- **Conda**: Anaconda或Miniconda
-- **数据库**: PostgreSQL（推荐）或MySQL
-- **内存**: 建议2GB以上
+- **鎿嶄綔绯荤粺**: Windows銆丩inux銆丮acOS
+- **Python鐗堟湰**: 3.9+
+- **Conda**: Anaconda鎴朚iniconda
+- **鏁版嵁搴?*: PostgreSQL锛堟帹鑽愶級鎴朚ySQL
+- **鍐呭瓨**: 寤鸿2GB浠ヤ笂
 
-### 1. 创建环境
+### 1. 鍒涘缓鐜
 
-#### 如果使用Conda
+#### 濡傛灉浣跨敤Conda
 
 ```bash
-# 创建conda环境
+# 鍒涘缓conda鐜
 conda create -n your_conda_name python=3.11
 conda activate your_conda_name
 ```
 
-#### 如果使用uv
+#### 濡傛灉浣跨敤uv
 
 ```bash
-# 创建uv环境
-uv venv --python 3.11 # 创建3.11环境
+# 鍒涘缓uv鐜
+uv venv --python 3.11 # 鍒涘缓3.11鐜
 ```
 
-### 2. 安装 PDF 导出所需系统依赖（可选）
+### 2. 瀹夎 PDF 瀵煎嚭鎵€闇€绯荤粺渚濊禆锛堝彲閫夛級
 
-这部分有详细的配置说明：[配置所需依赖](./static/Partial%20README%20for%20PDF%20Exporting/README.md)
+杩欓儴鍒嗘湁璇︾粏鐨勯厤缃鏄庯細[閰嶇疆鎵€闇€渚濊禆](./static/Partial%20README%20for%20PDF%20Exporting/README.md)
 
-### 3. 安装依赖包
+### 3. 瀹夎渚濊禆鍖?
 
-> 如果跳过了步骤2，weasyprint库可能无法安装，PDF功能可能无法正常使用。
+> 濡傛灉璺宠繃浜嗘楠?锛寃easyprint搴撳彲鑳芥棤娉曞畨瑁咃紝PDF鍔熻兘鍙兘鏃犳硶姝ｅ父浣跨敤銆?
 
 ```bash
-# 基础依赖安装
+# 鍩虹渚濊禆瀹夎
 pip install -r requirements.txt
 
-# uv版本命令（更快速安装）
+# uv鐗堟湰鍛戒护锛堟洿蹇€熷畨瑁咃級
 uv pip install -r requirements.txt
-# 如果不想使用本地情感分析模型（算力需求很小，默认安装cpu版本），可以将该文件中的"机器学习"部分注释掉再执行指令
+# 濡傛灉涓嶆兂浣跨敤鏈湴鎯呮劅鍒嗘瀽妯″瀷锛堢畻鍔涢渶姹傚緢灏忥紝榛樿瀹夎cpu鐗堟湰锛夛紝鍙互灏嗚鏂囦欢涓殑"鏈哄櫒瀛︿範"閮ㄥ垎娉ㄩ噴鎺夊啀鎵ц鎸囦护
 ```
 
-### 4. 安装Playwright浏览器驱动
+### 4. 瀹夎Playwright娴忚鍣ㄩ┍鍔?
 
 ```bash
-# 安装浏览器驱动（用于爬虫功能）
+# 瀹夎娴忚鍣ㄩ┍鍔紙鐢ㄤ簬鐖櫕鍔熻兘锛?
 playwright install chromium
 ```
 
-### 5. 配置LLM与数据库
+### 5. 閰嶇疆LLM涓庢暟鎹簱
 
-复制一份项目根目录 `.env.example` 文件，命名为 `.env`
+澶嶅埗涓€浠介」鐩牴鐩綍 `.env.example` 鏂囦欢锛屽懡鍚嶄负 `.env`
 
-编辑 `.env` 文件，填入您的API密钥（您也可以选择自己的模型、搜索代理，详情见根目录.env.example文件内或根目录config.py中的说明）：
+缂栬緫 `.env` 鏂囦欢锛屽～鍏ユ偍鐨凙PI瀵嗛挜锛堟偍涔熷彲浠ラ€夋嫨鑷繁鐨勬ā鍨嬨€佹悳绱唬鐞嗭紝璇︽儏瑙佹牴鐩綍.env.example鏂囦欢鍐呮垨鏍圭洰褰昪onfig.py涓殑璇存槑锛夛細
 
 ```yml
-# ====================== 数据库配置 ======================
-# 数据库主机，例如localhost 或 127.0.0.1
+# ====================== 鏁版嵁搴撻厤缃?======================
+# 鏁版嵁搴撲富鏈猴紝渚嬪localhost 鎴?127.0.0.1
 DB_HOST=your_db_host
-# 数据库端口号，默认为3306
+# 鏁版嵁搴撶鍙ｅ彿锛岄粯璁や负3306
 DB_PORT=3306
-# 数据库用户名
+# 鏁版嵁搴撶敤鎴峰悕
 DB_USER=your_db_user
-# 数据库密码
+# 鏁版嵁搴撳瘑鐮?
 DB_PASSWORD=your_db_password
-# 数据库名称
+# 鏁版嵁搴撳悕绉?
 DB_NAME=your_db_name
-# 数据库字符集，推荐utf8mb4，兼容emoji
+# 鏁版嵁搴撳瓧绗﹂泦锛屾帹鑽恥tf8mb4锛屽吋瀹筫moji
 DB_CHARSET=utf8mb4
-# 数据库类型postgresql或mysql
+# 鏁版嵁搴撶被鍨媝ostgresql鎴杕ysql
 DB_DIALECT=postgresql
-# 数据库不需要初始化，执行app.py时会自动检测
+# 鏁版嵁搴撲笉闇€瑕佸垵濮嬪寲锛屾墽琛宎pp.py鏃朵細鑷姩妫€娴?
 
-# ====================== LLM配置 ======================
-# 您可以更改每个部分LLM使用的API，只要兼容OpenAI请求格式都可以
-# 配置文件内部给了每一个Agent的推荐LLM，初次部署请先参考推荐设置
+# ====================== LLM閰嶇疆 ======================
+# 鎮ㄥ彲浠ユ洿鏀规瘡涓儴鍒哃LM浣跨敤鐨凙PI锛屽彧瑕佸吋瀹筄penAI璇锋眰鏍煎紡閮藉彲浠?
+# 閰嶇疆鏂囦欢鍐呴儴缁欎簡姣忎竴涓狝gent鐨勬帹鑽怢LM锛屽垵娆￠儴缃茶鍏堝弬鑰冩帹鑽愯缃?
 
 # Insight Agent
 INSIGHT_ENGINE_API_KEY=
@@ -418,168 +418,168 @@ INSIGHT_ENGINE_MODEL_NAME=
 ...
 ```
 
-### 6. 启动系统
+### 6. 鍚姩绯荤粺
 
-#### 6.1 完整系统启动（推荐）
+#### 6.1 瀹屾暣绯荤粺鍚姩锛堟帹鑽愶級
 
 ```bash
-# 在项目根目录下，激活conda环境
+# 鍦ㄩ」鐩牴鐩綍涓嬶紝婵€娲籧onda鐜
 conda activate your_conda_name
 
-# 启动主应用即可
+# 鍚姩涓诲簲鐢ㄥ嵆鍙?
 python app.py
 ```
 
-uv 版本启动命令 
+uv 鐗堟湰鍚姩鍛戒护 
 ```bash
-# 在项目根目录下，激活uv环境
+# 鍦ㄩ」鐩牴鐩綍涓嬶紝婵€娲籾v鐜
 .venv\Scripts\activate
 
-# 启动主应用即可
+# 鍚姩涓诲簲鐢ㄥ嵆鍙?
 python app.py
 ```
 
-> 注1：一次运行终止后，streamlit app可能结束异常仍然占用端口，此时搜索占用端口的进程kill掉即可
+> 娉?锛氫竴娆¤繍琛岀粓姝㈠悗锛宻treamlit app鍙兘缁撴潫寮傚父浠嶇劧鍗犵敤绔彛锛屾鏃舵悳绱㈠崰鐢ㄧ鍙ｇ殑杩涚▼kill鎺夊嵆鍙?
 
-> 注2：数据爬取需要单独操作，见6.3指引
+> 娉?锛氭暟鎹埇鍙栭渶瑕佸崟鐙搷浣滐紝瑙?.3鎸囧紩
 
-访问 http://localhost:5000 即可使用完整系统
+璁块棶 http://localhost:5000 鍗冲彲浣跨敤瀹屾暣绯荤粺
 
-#### 6.2 单独启动某个Agent
+#### 6.2 鍗曠嫭鍚姩鏌愪釜Agent
 
 ```bash
-# 启动QueryEngine
+# 鍚姩QueryEngine
 streamlit run SingleEngineApp/query_engine_streamlit_app.py --server.port 8503
 
-# 启动MediaEngine  
+# 鍚姩MediaEngine  
 streamlit run SingleEngineApp/media_engine_streamlit_app.py --server.port 8502
 
-# 启动InsightEngine
+# 鍚姩InsightEngine
 streamlit run SingleEngineApp/insight_engine_streamlit_app.py --server.port 8501
 ```
 
-#### 6.3 爬虫系统单独使用
+#### 6.3 鐖櫕绯荤粺鍗曠嫭浣跨敤
 
-这部分有详细的配置文档：[MindSpider使用说明](./MindSpider/README.md)
+杩欓儴鍒嗘湁璇︾粏鐨勯厤缃枃妗ｏ細[MindSpider浣跨敤璇存槑](./MindSpider/README.md)
 
 <div align="center">
 <img src="MindSpider\img\example.png" alt="banner" width="600">
 
-MindSpider 运行示例
+MindSpider 杩愯绀轰緥
 </div>
 
 ```bash
-# 进入爬虫目录
+# 杩涘叆鐖櫕鐩綍
 cd MindSpider
 
-# 项目初始化
+# 椤圭洰鍒濆鍖?
 python main.py --setup
 
-# 运行话题提取（获取热点新闻和关键词）
+# 杩愯璇濋鎻愬彇锛堣幏鍙栫儹鐐规柊闂诲拰鍏抽敭璇嶏級
 python main.py --broad-topic
 
-# 运行完整爬虫流程
+# 杩愯瀹屾暣鐖櫕娴佺▼
 python main.py --complete --date 2024-01-20
 
-# 仅运行话题提取
+# 浠呰繍琛岃瘽棰樻彁鍙?
 python main.py --broad-topic --date 2024-01-20
 
-# 仅运行深度爬取
+# 浠呰繍琛屾繁搴︾埇鍙?
 python main.py --deep-sentiment --platforms xhs dy wb
 ```
 
-#### 6.4 命令行报告生成工具
+#### 6.4 鍛戒护琛屾姤鍛婄敓鎴愬伐鍏?
 
-该工具会跳过三个分析引擎的运行阶段，直接读取它们的最新日志文件，并在无需 Web 界面的情况下生成综合报告（同时省略文件增量校验步骤），默认会在 PDF 之后自动生成 Markdown（可用参数关闭）。通常用于对报告生成结果不满意、需要快速重试的场景，或在调试 Report Engine 时启用。
+璇ュ伐鍏蜂細璺宠繃涓変釜鍒嗘瀽寮曟搸鐨勮繍琛岄樁娈碉紝鐩存帴璇诲彇瀹冧滑鐨勬渶鏂版棩蹇楁枃浠讹紝骞跺湪鏃犻渶 Web 鐣岄潰鐨勬儏鍐典笅鐢熸垚缁煎悎鎶ュ憡锛堝悓鏃剁渷鐣ユ枃浠跺閲忔牎楠屾楠わ級锛岄粯璁や細鍦?PDF 涔嬪悗鑷姩鐢熸垚 Markdown锛堝彲鐢ㄥ弬鏁板叧闂級銆傞€氬父鐢ㄤ簬瀵规姤鍛婄敓鎴愮粨鏋滀笉婊℃剰銆侀渶瑕佸揩閫熼噸璇曠殑鍦烘櫙锛屾垨鍦ㄨ皟璇?Report Engine 鏃跺惎鐢ㄣ€?
 
 ```bash
-# 基本使用（自动从文件名提取主题）
+# 鍩烘湰浣跨敤锛堣嚜鍔ㄤ粠鏂囦欢鍚嶆彁鍙栦富棰橈級
 python report_engine_only.py
 
-# 指定报告主题
-python report_engine_only.py --query "土木工程行业分析"
+# 鎸囧畾鎶ュ憡涓婚
+python report_engine_only.py --query "鍦熸湪宸ョ▼琛屼笟鍒嗘瀽"
 
-# 跳过PDF生成（即使系统支持）
+# 璺宠繃PDF鐢熸垚锛堝嵆浣跨郴缁熸敮鎸侊級
 python report_engine_only.py --skip-pdf
 
-# 跳过Markdown生成
+# 璺宠繃Markdown鐢熸垚
 python report_engine_only.py --skip-markdown
 
-# 显示详细日志
+# 鏄剧ず璇︾粏鏃ュ織
 python report_engine_only.py --verbose
 
-# 查看帮助信息
+# 鏌ョ湅甯姪淇℃伅
 python report_engine_only.py --help
 ```
 
-**功能说明：**
+**鍔熻兘璇存槑锛?*
 
-1. **自动检查依赖**：程序会自动检查PDF生成所需的系统依赖，如果缺失会给出安装提示
-2. **获取最新文件**：自动从三个引擎目录（`insight_engine_streamlit_reports`、`media_engine_streamlit_reports`、`query_engine_streamlit_reports`）获取最新的分析报告
-3. **文件确认**：显示所有选择的文件名、路径和修改时间，等待用户确认（默认输入 `y` 继续，输入 `n` 退出）
-4. **直接生成报告**：跳过文件增加审核程序，直接调用Report Engine生成综合报告
-5. **自动保存文件**：
-   - HTML报告保存到 `outputs/final_reports/` 目录
-   - PDF报告（如果有依赖）保存到 `outputs/final_reports/pdf/` 目录
-   - Markdown报告（可用 `--skip-markdown` 关闭）保存到 `outputs/final_reports/md/` 目录
-   - 文件命名格式：`final_report_{主题}_{时间戳}.html/pdf/md`
+1. **鑷姩妫€鏌ヤ緷璧?*锛氱▼搴忎細鑷姩妫€鏌DF鐢熸垚鎵€闇€鐨勭郴缁熶緷璧栵紝濡傛灉缂哄け浼氱粰鍑哄畨瑁呮彁绀?
+2. **鑾峰彇鏈€鏂版枃浠?*锛氳嚜鍔ㄤ粠涓変釜寮曟搸鐩綍锛坄insight_engine_streamlit_reports`銆乣media_engine_streamlit_reports`銆乣query_engine_streamlit_reports`锛夎幏鍙栨渶鏂扮殑鍒嗘瀽鎶ュ憡
+3. **鏂囦欢纭**锛氭樉绀烘墍鏈夐€夋嫨鐨勬枃浠跺悕銆佽矾寰勫拰淇敼鏃堕棿锛岀瓑寰呯敤鎴风‘璁わ紙榛樿杈撳叆 `y` 缁х画锛岃緭鍏?`n` 閫€鍑猴級
+4. **鐩存帴鐢熸垚鎶ュ憡**锛氳烦杩囨枃浠跺鍔犲鏍哥▼搴忥紝鐩存帴璋冪敤Report Engine鐢熸垚缁煎悎鎶ュ憡
+5. **鑷姩淇濆瓨鏂囦欢**锛?
+   - HTML鎶ュ憡淇濆瓨鍒?`outputs/final_reports/` 鐩綍
+   - PDF鎶ュ憡锛堝鏋滄湁渚濊禆锛変繚瀛樺埌 `outputs/final_reports/pdf/` 鐩綍
+   - Markdown鎶ュ憡锛堝彲鐢?`--skip-markdown` 鍏抽棴锛変繚瀛樺埌 `outputs/final_reports/md/` 鐩綍
+   - 鏂囦欢鍛藉悕鏍煎紡锛歚final_report_{涓婚}_{鏃堕棿鎴硙.html/pdf/md`
 
-**注意事项：**
+**娉ㄦ剰浜嬮」锛?*
 
-- 确保三个引擎目录中至少有一个包含`.md`报告文件
-- 命令行工具与Web界面相互独立，不会相互影响
-- 主运行日志、`forum.log` 与 ReportEngine 日志默认统一写入 `outputs/logs/`
-- PDF生成需要安装系统依赖，详见上文"安装 PDF 导出所需系统依赖"部分
+- 纭繚涓変釜寮曟搸鐩綍涓嚦灏戞湁涓€涓寘鍚玚.md`鎶ュ憡鏂囦欢
+- 鍛戒护琛屽伐鍏蜂笌Web鐣岄潰鐩镐簰鐙珛锛屼笉浼氱浉浜掑奖鍝?
+- 涓昏繍琛屾棩蹇椼€乣forum.log` 涓?ReportEngine 鏃ュ織榛樿缁熶竴鍐欏叆 `outputs/logs/`
+- PDF鐢熸垚闇€瑕佸畨瑁呯郴缁熶緷璧栵紝璇﹁涓婃枃"瀹夎 PDF 瀵煎嚭鎵€闇€绯荤粺渚濊禆"閮ㄥ垎
 
-**快速重渲染最新结果：**
+**蹇€熼噸娓叉煋鏈€鏂扮粨鏋滐細**
 
-- `regenerate_latest_html.py` / `regenerate_latest_md.py`：从 `CHAPTER_OUTPUT_DIR` 中最新一次运行的章节 JSON 重装订 Document IR，并直接渲染 HTML 或 Markdown。
-- `regenerate_latest_pdf.py`：读取 `outputs/final_reports/ir` 里最新的 IR，使用 SVG 矢量图表重新导出 PDF。
+- `regenerate_latest_html.py` / `regenerate_latest_md.py`锛氫粠 `CHAPTER_OUTPUT_DIR` 涓渶鏂颁竴娆¤繍琛岀殑绔犺妭 JSON 閲嶈璁?Document IR锛屽苟鐩存帴娓叉煋 HTML 鎴?Markdown銆?
+- `regenerate_latest_pdf.py`锛氳鍙?`outputs/final_reports/ir` 閲屾渶鏂扮殑 IR锛屼娇鐢?SVG 鐭㈤噺鍥捐〃閲嶆柊瀵煎嚭 PDF銆?
 
-## ⚙️ 高级配置（已过时，已经统一为项目根目录.env文件管理，其他子agent自动继承根目录配置）
+## 鈿欙笍 楂樼骇閰嶇疆锛堝凡杩囨椂锛屽凡缁忕粺涓€涓洪」鐩牴鐩綍.env鏂囦欢绠＄悊锛屽叾浠栧瓙agent鑷姩缁ф壙鏍圭洰褰曢厤缃級
 
-### 修改关键参数
+### 淇敼鍏抽敭鍙傛暟
 
-#### Agent配置参数
+#### Agent閰嶇疆鍙傛暟
 
-每个Agent都有专门的配置文件，可根据需求调整，下面是部分示例：
+姣忎釜Agent閮芥湁涓撻棬鐨勯厤缃枃浠讹紝鍙牴鎹渶姹傝皟鏁达紝涓嬮潰鏄儴鍒嗙ず渚嬶細
 
 ```python
 # QueryEngine/utils/config.py
 class Config:
-    max_reflections = 2           # 反思轮次
-    max_search_results = 15       # 最大搜索结果数
-    max_content_length = 8000     # 最大内容长度
+    max_reflections = 2           # 鍙嶆€濊疆娆?
+    max_search_results = 15       # 鏈€澶ф悳绱㈢粨鏋滄暟
+    max_content_length = 8000     # 鏈€澶у唴瀹归暱搴?
     
 # MediaEngine/utils/config.py  
 class Config:
-    comprehensive_search_limit = 10  # 综合搜索限制
-    web_search_limit = 15           # 网页搜索限制
+    comprehensive_search_limit = 10  # 缁煎悎鎼滅储闄愬埗
+    web_search_limit = 15           # 缃戦〉鎼滅储闄愬埗
     
 # InsightEngine/utils/config.py
 class Config:
-    default_search_topic_globally_limit = 200    # 全局搜索限制
-    default_get_comments_limit = 500             # 评论获取限制
-    max_search_results_for_llm = 50              # 传给LLM的最大结果数
+    default_search_topic_globally_limit = 200    # 鍏ㄥ眬鎼滅储闄愬埗
+    default_get_comments_limit = 500             # 璇勮鑾峰彇闄愬埗
+    max_search_results_for_llm = 50              # 浼犵粰LLM鐨勬渶澶х粨鏋滄暟
 ```
 
-#### 情感分析模型配置
+#### 鎯呮劅鍒嗘瀽妯″瀷閰嶇疆
 
 ```python
 # InsightEngine/tools/sentiment_analyzer.py
 SENTIMENT_CONFIG = {
-    'model_type': 'multilingual',     # 可选: 'bert', 'multilingual', 'qwen'等
-    'confidence_threshold': 0.8,      # 置信度阈值
-    'batch_size': 32,                 # 批处理大小
-    'max_sequence_length': 512,       # 最大序列长度
+    'model_type': 'multilingual',     # 鍙€? 'bert', 'multilingual', 'qwen'绛?
+    'confidence_threshold': 0.8,      # 缃俊搴﹂槇鍊?
+    'batch_size': 32,                 # 鎵瑰鐞嗗ぇ灏?
+    'max_sequence_length': 512,       # 鏈€澶у簭鍒楅暱搴?
 }
 ```
 
-### 接入不同的LLM模型
+### 鎺ュ叆涓嶅悓鐨凩LM妯″瀷
 
-支持任意openAI调用格式的LLM提供商，只需要在/config.py中填写对应的KEY、BASE_URL、MODEL_NAME即可。
+鏀寔浠绘剰openAI璋冪敤鏍煎紡鐨凩LM鎻愪緵鍟嗭紝鍙渶瑕佸湪/config.py涓～鍐欏搴旂殑KEY銆丅ASE_URL銆丮ODEL_NAME鍗冲彲銆?
 
-> 什么是openAI调用格式？下面提供一个简单的例子：
+> 浠€涔堟槸openAI璋冪敤鏍煎紡锛熶笅闈㈡彁渚涗竴涓畝鍗曠殑渚嬪瓙锛?
 >```python
 >from openai import OpenAI
 >
@@ -590,7 +590,7 @@ SENTIMENT_CONFIG = {
 >    model="gpt-4o-mini",
 >    messages=[
 >        {'role': 'user', 
->         'content': "推理模型会给市场带来哪些新的机会"}
+>         'content': "鎺ㄧ悊妯″瀷浼氱粰甯傚満甯︽潵鍝簺鏂扮殑鏈轰細"}
 >    ],
 >)
 >
@@ -598,52 +598,52 @@ SENTIMENT_CONFIG = {
 >print(complete_response)
 >```
 
-### 更改情感分析模型
+### 鏇存敼鎯呮劅鍒嗘瀽妯″瀷
 
-系统集成了多种情感分析方法，可根据需求选择：
+绯荤粺闆嗘垚浜嗗绉嶆儏鎰熷垎鏋愭柟娉曪紝鍙牴鎹渶姹傞€夋嫨锛?
 
-#### 1. 多语言情感分析
+#### 1. 澶氳瑷€鎯呮劅鍒嗘瀽
 
 ```bash
 cd SentimentAnalysisModel/WeiboMultilingualSentiment
 python predict.py --text "This product is amazing!" --lang "en"
 ```
 
-#### 2. 小参数Qwen3微调
+#### 2. 灏忓弬鏁癚wen3寰皟
 
 ```bash
 cd SentimentAnalysisModel/WeiboSentiment_SmallQwen
-python predict_universal.py --text "这次活动办得很成功"
+python predict_universal.py --text "杩欐娲诲姩鍔炲緱寰堟垚鍔?
 ```
 
-#### 3. 基于BERT的微调模型
+#### 3. 鍩轰簬BERT鐨勫井璋冩ā鍨?
 
 ```bash
-# 使用BERT中文模型
+# 浣跨敤BERT涓枃妯″瀷
 cd SentimentAnalysisModel/WeiboSentiment_Finetuned/BertChinese-Lora
-python predict.py --text "这个产品真的很不错"
+python predict.py --text "杩欎釜浜у搧鐪熺殑寰堜笉閿?
 ```
 
-#### 4. GPT-2 LoRA微调模型
+#### 4. GPT-2 LoRA寰皟妯″瀷
 
 ```bash
 cd SentimentAnalysisModel/WeiboSentiment_Finetuned/GPT2-Lora
-python predict.py --text "今天心情不太好"
+python predict.py --text "浠婂ぉ蹇冩儏涓嶅お濂?
 ```
 
-#### 5. 传统机器学习方法
+#### 5. 浼犵粺鏈哄櫒瀛︿範鏂规硶
 
 ```bash
 cd SentimentAnalysisModel/WeiboSentiment_MachineLearning
-python predict.py --model_type "svm" --text "服务态度需要改进"
+python predict.py --model_type "svm" --text "鏈嶅姟鎬佸害闇€瑕佹敼杩?
 ```
 
-### 接入自定义业务数据库
+### 鎺ュ叆鑷畾涔変笟鍔℃暟鎹簱
 
-#### 1. 修改数据库连接配置
+#### 1. 淇敼鏁版嵁搴撹繛鎺ラ厤缃?
 
 ```python
-# config.py 中添加您的业务数据库配置
+# config.py 涓坊鍔犳偍鐨勪笟鍔℃暟鎹簱閰嶇疆
 BUSINESS_DB_HOST = "your_business_db_host"
 BUSINESS_DB_PORT = 3306
 BUSINESS_DB_USER = "your_business_user"
@@ -651,12 +651,12 @@ BUSINESS_DB_PASSWORD = "your_business_password"
 BUSINESS_DB_NAME = "your_business_database"
 ```
 
-#### 2. 创建自定义数据访问工具
+#### 2. 鍒涘缓鑷畾涔夋暟鎹闂伐鍏?
 
 ```python
 # InsightEngine/tools/custom_db_tool.py
 class CustomBusinessDBTool:
-    """自定义业务数据库查询工具"""
+    """鑷畾涔変笟鍔℃暟鎹簱鏌ヨ宸ュ叿"""
     
     def __init__(self):
         self.connection_config = {
@@ -668,129 +668,129 @@ class CustomBusinessDBTool:
         }
     
     def search_business_data(self, query: str, table: str):
-        """查询业务数据"""
-        # 实现您的业务逻辑
+        """鏌ヨ涓氬姟鏁版嵁"""
+        # 瀹炵幇鎮ㄧ殑涓氬姟閫昏緫
         pass
     
     def get_customer_feedback(self, product_id: str):
-        """获取客户反馈数据"""
-        # 实现客户反馈查询逻辑
+        """鑾峰彇瀹㈡埛鍙嶉鏁版嵁"""
+        # 瀹炵幇瀹㈡埛鍙嶉鏌ヨ閫昏緫
         pass
 ```
 
-#### 3. 集成到InsightEngine
+#### 3. 闆嗘垚鍒癐nsightEngine
 
 ```python
-# InsightEngine/agent.py 中集成自定义工具
+# InsightEngine/agent.py 涓泦鎴愯嚜瀹氫箟宸ュ叿
 from .tools.custom_db_tool import CustomBusinessDBTool
 
 class DeepSearchAgent:
     def __init__(self, config=None):
-        # ... 其他初始化代码
+        # ... 鍏朵粬鍒濆鍖栦唬鐮?
         self.custom_db_tool = CustomBusinessDBTool()
     
     def execute_custom_search(self, query: str):
-        """执行自定义业务数据搜索"""
+        """鎵ц鑷畾涔変笟鍔℃暟鎹悳绱?""
         return self.custom_db_tool.search_business_data(query, "your_table")
 ```
 
-### 自定义报告模板
+### 鑷畾涔夋姤鍛婃ā鏉?
 
-#### 1. 在Web界面中上传
+#### 1. 鍦╓eb鐣岄潰涓笂浼?
 
-系统支持上传自定义模板文件（.md或.txt格式），可在生成报告时选择使用。
+绯荤粺鏀寔涓婁紶鑷畾涔夋ā鏉挎枃浠讹紙.md鎴?txt鏍煎紡锛夛紝鍙湪鐢熸垚鎶ュ憡鏃堕€夋嫨浣跨敤銆?
 
-#### 2. 创建模板文件
+#### 2. 鍒涘缓妯℃澘鏂囦欢
 
-在 `ReportEngine/report_template/` 目录下创建新的模板，我们的Agent会自行选用最合适的模板。
+鍦?`ReportEngine/report_template/` 鐩綍涓嬪垱寤烘柊鐨勬ā鏉匡紝鎴戜滑鐨凙gent浼氳嚜琛岄€夌敤鏈€鍚堥€傜殑妯℃澘銆?
 
-## 🤝 贡献指南
+## 馃 璐＄尞鎸囧崡
 
-我们欢迎所有形式的贡献！
+鎴戜滑娆㈣繋鎵€鏈夊舰寮忕殑璐＄尞锛?
 
-**请阅读以下贡献指南：**  
+**璇烽槄璇讳互涓嬭础鐚寚鍗楋細**  
 - [CONTRIBUTING.md](./CONTRIBUTING.md)
 
-## 🦖 下一步开发计划
+## 馃 涓嬩竴姝ュ紑鍙戣鍒?
 
-现在系统完成了最后一步预测！访问查看【MiroFish-预测万物】：https://github.com/666ghj/MiroFish
+鐜板湪绯荤粺瀹屾垚浜嗘渶鍚庝竴姝ラ娴嬶紒璁块棶鏌ョ湅銆怣iroFish-棰勬祴涓囩墿銆戯細https://github.com/666ghj/MiroFish
 
 <div align="center">
 <img src="static/image/MiroFish_logo_compressed.jpeg" alt="banner" width="800">
 <img src="static/image/banner_compressed.png" alt="banner" width="800">
 </div>
 
-## ⚠️ 免责声明
+## 鈿狅笍 鍏嶈矗澹版槑
 
-**重要提醒：本项目仅供学习、学术研究和教育目的使用**
+**閲嶈鎻愰啋锛氭湰椤圭洰浠呬緵瀛︿範銆佸鏈爺绌跺拰鏁欒偛鐩殑浣跨敤**
 
-1. **合规性声明**：
-   - 本项目中的所有代码、工具和功能均仅供学习、学术研究和教育目的使用
-   - 严禁将本项目用于任何商业用途或盈利性活动
-   - 严禁将本项目用于任何违法、违规或侵犯他人权益的行为
+1. **鍚堣鎬у０鏄?*锛?
+   - 鏈」鐩腑鐨勬墍鏈変唬鐮併€佸伐鍏峰拰鍔熻兘鍧囦粎渚涘涔犮€佸鏈爺绌跺拰鏁欒偛鐩殑浣跨敤
+   - 涓ョ灏嗘湰椤圭洰鐢ㄤ簬浠讳綍鍟嗕笟鐢ㄩ€旀垨鐩堝埄鎬ф椿鍔?
+   - 涓ョ灏嗘湰椤圭洰鐢ㄤ簬浠讳綍杩濇硶銆佽繚瑙勬垨渚电姱浠栦汉鏉冪泭鐨勮涓?
 
-2. **爬虫功能免责**：
-   - 项目中的爬虫功能仅用于技术学习和研究目的
-   - 使用者必须遵守目标网站的robots.txt协议和使用条款
-   - 使用者必须遵守相关法律法规，不得进行恶意爬取或数据滥用
-   - 因使用爬虫功能产生的任何法律后果由使用者自行承担
+2. **鐖櫕鍔熻兘鍏嶈矗**锛?
+   - 椤圭洰涓殑鐖櫕鍔熻兘浠呯敤浜庢妧鏈涔犲拰鐮旂┒鐩殑
+   - 浣跨敤鑰呭繀椤婚伒瀹堢洰鏍囩綉绔欑殑robots.txt鍗忚鍜屼娇鐢ㄦ潯娆?
+   - 浣跨敤鑰呭繀椤婚伒瀹堢浉鍏虫硶寰嬫硶瑙勶紝涓嶅緱杩涜鎭舵剰鐖彇鎴栨暟鎹互鐢?
+   - 鍥犱娇鐢ㄧ埇铏姛鑳戒骇鐢熺殑浠讳綍娉曞緥鍚庢灉鐢变娇鐢ㄨ€呰嚜琛屾壙鎷?
 
-3. **数据使用免责**：
-   - 项目涉及的数据分析功能仅供学术研究使用
-   - 严禁将分析结果用于商业决策或盈利目的
-   - 使用者应确保所分析数据的合法性和合规性
+3. **鏁版嵁浣跨敤鍏嶈矗**锛?
+   - 椤圭洰娑夊強鐨勬暟鎹垎鏋愬姛鑳戒粎渚涘鏈爺绌朵娇鐢?
+   - 涓ョ灏嗗垎鏋愮粨鏋滅敤浜庡晢涓氬喅绛栨垨鐩堝埄鐩殑
+   - 浣跨敤鑰呭簲纭繚鎵€鍒嗘瀽鏁版嵁鐨勫悎娉曟€у拰鍚堣鎬?
 
-4. **技术免责**：
-   - 本项目按"现状"提供，不提供任何明示或暗示的保证
-   - 作者不对使用本项目造成的任何直接或间接损失承担责任
-   - 使用者应自行评估项目的适用性和风险
+4. **鎶€鏈厤璐?*锛?
+   - 鏈」鐩寜"鐜扮姸"鎻愪緵锛屼笉鎻愪緵浠讳綍鏄庣ず鎴栨殫绀虹殑淇濊瘉
+   - 浣滆€呬笉瀵逛娇鐢ㄦ湰椤圭洰閫犳垚鐨勪换浣曠洿鎺ユ垨闂存帴鎹熷け鎵挎媴璐ｄ换
+   - 浣跨敤鑰呭簲鑷璇勪及椤圭洰鐨勯€傜敤鎬у拰椋庨櫓
 
-5. **责任限制**：
-   - 使用者在使用本项目前应充分了解相关法律法规
-   - 使用者应确保其使用行为符合当地法律法规要求
-   - 因违反法律法规使用本项目而产生的任何后果由使用者自行承担
+5. **璐ｄ换闄愬埗**锛?
+   - 浣跨敤鑰呭湪浣跨敤鏈」鐩墠搴斿厖鍒嗕簡瑙ｇ浉鍏虫硶寰嬫硶瑙?
+   - 浣跨敤鑰呭簲纭繚鍏朵娇鐢ㄨ涓虹鍚堝綋鍦版硶寰嬫硶瑙勮姹?
+   - 鍥犺繚鍙嶆硶寰嬫硶瑙勪娇鐢ㄦ湰椤圭洰鑰屼骇鐢熺殑浠讳綍鍚庢灉鐢变娇鐢ㄨ€呰嚜琛屾壙鎷?
 
-**请在使用本项目前仔细阅读并理解上述免责声明。使用本项目即表示您已同意并接受上述所有条款。**
+**璇峰湪浣跨敤鏈」鐩墠浠旂粏闃呰骞剁悊瑙ｄ笂杩板厤璐ｅ０鏄庛€備娇鐢ㄦ湰椤圭洰鍗宠〃绀烘偍宸插悓鎰忓苟鎺ュ彈涓婅堪鎵€鏈夋潯娆俱€?*
 
-## 📄 许可证
+## 馃搫 璁稿彲璇?
 
-本项目采用 [GPL-2.0许可证](LICENSE)。详细信息请参阅LICENSE文件。
+鏈」鐩噰鐢?[GPL-2.0璁稿彲璇乚(LICENSE)銆傝缁嗕俊鎭鍙傞槄LICENSE鏂囦欢銆?
 
-## 🎉 支持与联系
+## 馃帀 鏀寔涓庤仈绯?
 
-### 获取帮助
+### 鑾峰彇甯姪
 
-常见问题解答：https://github.com/666ghj/BettaFish/issues/185
+甯歌闂瑙ｇ瓟锛歨ttps://github.com/666ghj/BettaFish/issues/185
 
-- **项目主页**：[GitHub仓库](https://github.com/666ghj/BettaFish)
-- **问题反馈**：[Issues页面](https://github.com/666ghj/BettaFish/issues)
-- **功能建议**：[Discussions页面](https://github.com/666ghj/BettaFish/discussions)
+- **椤圭洰涓婚〉**锛歔GitHub浠撳簱](https://github.com/666ghj/BettaFish)
+- **闂鍙嶉**锛歔Issues椤甸潰](https://github.com/666ghj/BettaFish/issues)
+- **鍔熻兘寤鸿**锛歔Discussions椤甸潰](https://github.com/666ghj/BettaFish/discussions)
 
-### 联系方式
+### 鑱旂郴鏂瑰紡
 
-- 📧 **邮箱**：hangjiang@bupt.edu.cn
+- 馃摟 **閭**锛歨angjiang@bupt.edu.cn
 
-### 商务合作
+### 鍟嗗姟鍚堜綔
 
-- **企业定制开发**
-- **大数据服务**
-- **学术合作**
-- **技术培训**
+- **浼佷笟瀹氬埗寮€鍙?*
+- **澶ф暟鎹湇鍔?*
+- **瀛︽湳鍚堜綔**
+- **鎶€鏈煿璁?*
 
-## 👥 贡献者
+## 馃懃 璐＄尞鑰?
 
-感谢以下优秀的贡献者们：
+鎰熻阿浠ヤ笅浼樼鐨勮础鐚€呬滑锛?
 
 [![Contributors](https://contrib.rocks/image?repo=666ghj/BettaFish)](https://github.com/666ghj/BettaFish/graphs/contributors)
 
-## 🌟 加入官方交流群
+## 馃専 鍔犲叆瀹樻柟浜ゆ祦缇?
 
 <div align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&height=200&section=header&text=欢迎加入我们的技术交流QQ群！&fontSize=40&fontAlignY=35&desc=扫描下方二维码加入群聊&descAlignY=55" alt="欢迎加入我们的技术交流QQ群！" style="width:60%; max-width:900px; display:block; margin:0 auto;">
-  <img src="static/image/QQ_Light_Horizenal.png" alt="BettaFish 技术交流群二维码" style="width:60%; max-width:360px; display:block; margin:20px auto 0;">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&height=200&section=header&text=娆㈣繋鍔犲叆鎴戜滑鐨勬妧鏈氦娴丵Q缇わ紒&fontSize=40&fontAlignY=35&desc=鎵弿涓嬫柟浜岀淮鐮佸姞鍏ョ兢鑱?descAlignY=55" alt="娆㈣繋鍔犲叆鎴戜滑鐨勬妧鏈氦娴丵Q缇わ紒" style="width:60%; max-width:900px; display:block; margin:0 auto;">
+  <img src="static/image/QQ_Light_Horizenal.png" alt="BettaFish 鎶€鏈氦娴佺兢浜岀淮鐮? style="width:60%; max-width:360px; display:block; margin:20px auto 0;">
 </div>
 
-## 📈 项目统计
+## 馃搱 椤圭洰缁熻
 
 <a href="https://www.star-history.com/#666ghj/BettaFish&type=date&legend=top-left">
  <picture>

@@ -172,7 +172,7 @@ def write_config_values(updates):
     from pathlib import Path
     
     # 确定 .env 文件路径（与 config.py 中的逻辑一致）
-    project_root = Path(__file__).resolve().parent
+    project_root = Path(__file__).resolve().parents[1]
     cwd_env = Path.cwd() / ".env"
     env_file_path = cwd_env if cwd_env.exists() else (project_root / ".env")
     
