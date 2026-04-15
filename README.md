@@ -155,6 +155,46 @@ python scripts/run_real_source_demo.py
 
 这个脚本会关闭写作和交付，只保留真实来源加载和评分，便于本地验证输入适配链路。
 
+## Skill 说明
+
+仓库内已经提供了一个可直接复用的 Skill：
+
+- [skills/openclaw-topic-radar/SKILL.md](F:\02_code\ClawRadar\skills\openclaw-topic-radar\SKILL.md)
+
+这个 Skill 的定位不是重新实现一套平行编排，而是把调用统一收口到当前仓库真实入口：
+
+- Python API：`topic_radar_orchestrate()`
+- CLI launcher：`run_openclaw_deliverable.py`
+- Skill 脚本入口：`skills/openclaw-topic-radar/scripts/run_topic_radar.py`
+
+适用场景：
+
+- 用 `user_topic` 触发一轮完整舆情流程
+- 用 `real_source` 先抓热点再继续评分
+- 从已有 `topic_cards`、`normalized_events`、`scored_events` 或 `content_bundle` 继续执行
+
+Skill 默认行为：
+
+- `execution_mode = full_pipeline`
+- `write.executor = external_writer`
+- `delivery.target_mode = archive_only`
+- `delivery.target = archive://openclaw_p0`
+
+典型调用示例：
+
+```bash
+python skills/openclaw-topic-radar/scripts/run_topic_radar.py --input-mode user_topic --topic "OpenAI 企业级智能体平台" --company "OpenAI" --keywords 智能体 企业服务
+python skills/openclaw-topic-radar/scripts/run_topic_radar.py --scored-events-file scored_events.json --execution-mode resume
+python skills/openclaw-topic-radar/scripts/run_topic_radar.py --content-bundle-file content_bundle.json --execution-mode deliver_only
+```
+
+Skill 的配套文件包括：
+
+- [skills/openclaw-topic-radar/agents/openai.yaml](F:\02_code\ClawRadar\skills\openclaw-topic-radar\agents\openai.yaml)
+- [skills/openclaw-topic-radar/references/modes.md](F:\02_code\ClawRadar\skills\openclaw-topic-radar\references\modes.md)
+- [skills/openclaw-topic-radar/references/payloads.md](F:\02_code\ClawRadar\skills\openclaw-topic-radar\references\payloads.md)
+- [skills/openclaw-topic-radar/scripts/run_topic_radar.py](F:\02_code\ClawRadar\skills\openclaw-topic-radar\scripts\run_topic_radar.py)
+
 ## 输入模式
 
 统一入口当前最重要的两种外部输入模式如下：
