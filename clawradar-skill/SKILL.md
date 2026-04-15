@@ -1,9 +1,9 @@
 ﻿---
-name: clawradar
-description: 使用 ClawRadar 官方仓库运行选题发现、评分、写作与交付流程。适用于 user_topic、real_source 或从中间工件恢复执行，不允许用手工搜索替代 real_source。
+name: 追踪雷达助手
+description: 使用 ClawRadar 官方仓库运行选题发现、评分、写作与交付流程。适用于 user_topic、real_source 或从中间工件恢复执行；数据必须由 Skill 自己通过仓库流程抓取，不允许由 agent 手工搜索替代 real_source。
 ---
 
-# ClawRadar
+# 追踪雷达助手
 
 ## 作用
 
@@ -28,6 +28,23 @@ ClawRadar 官方仓库地址：
 `https://github.com/zhaogods/ClawRadar`
 
 本 Skill 依赖完整仓库。只保存或上传单独的 `Skill.md` 并不能让本地工作流运行起来。
+
+## 名称与唤醒词
+
+这个 Skill 的正式中文名是：
+
+`追踪雷达助手`
+
+可接受的近似唤醒词包括：
+
+- `追踪雷达助手`
+- `追踪雷达`
+- `雷达助手`
+- `选题雷达助手`
+- `舆情追踪助手`
+- `ClawRadar`
+
+当用户明确要求使用这些名称之一时，应视为要求调用本 Skill 对应的工作流约束，而不是切换成普通 agent 自由搜索模式。
 
 ## 唯一事实来源
 
@@ -76,23 +93,6 @@ python -m pip install pytest
 - 对应模型、接口或外部服务所需的凭证
 
 如果这些条件未满足，应明确报告“环境未就绪”或“依赖未满足”，不要把问题描述成 Skill 定义本身失效。
-
-## Claude Custom Skill 打包方式
-
-按照 Claude 自定义 Skill 的单文件推荐结构，上传包建议做成：
-
-```text
-clawradar/
-└── Skill.md
-```
-
-说明：
-
-- Skill 名称应为 `clawradar`
-- 上传时目录名应与 Skill 名称一致
-- 当前仓库里维护副本位于 `clawradar-skill/SKILL.md`
-- 上传包可以只有一个 `Skill.md`
-- 但本地执行 ClawRadar 工作流时，仍然必须有完整克隆仓库
 
 ## 仓库内维护约定
 
@@ -145,6 +145,21 @@ clawradar/
 4. 遇到缺失依赖时先报告环境问题
 5. 遇到 `real_source` 失败时，不要悄悄换成人工搜索补数据
 6. 所有对结果的描述都必须和仓库真实执行结果一致
+7. 输出目录固定使用仓库根目录下的默认 `outputs/`
+
+## 数据抓取硬约束
+
+一旦用户明确要求使用本 Skill，数据获取必须遵守以下规则：
+
+- 如果任务需要抓取真实数据，必须由 ClawRadar 仓库自己的 `real_source` 或 `user_topic -> real_source` 链路完成
+- agent 不得先自行网页搜索、浏览、摘录、整理，再把结果伪装成仓库输入
+- agent 不得先抓微博、新闻、论坛、网页内容，再手工改写成 `topic_candidates`、`normalized_events` 或其他中间工件冒充 Skill 输出
+- 如果真实抓取所需依赖、网络或凭证不可用，应明确报告环境未就绪，而不是改走“agent 代抓取”
+
+只允许以下两类例外：
+
+- 用户明确提供了现成中间工件，并要求从这些工件恢复执行
+- 为了诊断失败原因而检查配置、依赖或网络，但这种诊断不能替代真实抓取本身
 
 ## 常用命令
 
@@ -206,6 +221,7 @@ print(result.get("run_status"), result.get("final_stage"))
 - 当前目录确实是 ClawRadar 仓库根目录
 - 存在 `clawradar/` 目录
 - 存在 `run_openclaw_deliverable.py`
+- 默认输出会写入仓库根目录下的 `outputs/`
 - 依赖已经安装
 - 需要外部能力时，环境变量和凭证已经配置
 
@@ -243,19 +259,19 @@ print(result.get("run_status"), result.get("final_stage"))
 
 - 不要声称 `real_source` 已成功，除非仓库确实执行成功
 - 不要把手工搜索结果包装成仓库原生输出
+- 不要把 agent 自己抓到的数据包装成 Skill 的抓取结果
 - 不要编造不存在的阶段、工件、保障或能力
 - 不要把环境问题误报成 Skill 失效
 - 不要把 `radar_engines/` 说成默认的最终用户入口
 
 ## 维护说明
 
-这份文件被设计成可直接用于 Claude Custom Skills 的单文件 Skill，目标是：
+这份文件是当前仓库中“追踪雷达助手” Skill 的唯一维护文档，目标是：
 
 - 元数据清晰
 - 工作流单一明确
 - 触发条件明确
 - 安装步骤可直接执行
 - 使用边界清楚
-- 打包方式简单
 
 如果以后确实需要扩展，可以继续补充内容；但默认应保持单文件、低歧义、可直接执行。

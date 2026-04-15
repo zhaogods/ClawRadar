@@ -85,7 +85,7 @@ ClawRadar/
 │  ├─ InsightEngine/
 │  ├─ ReportEngine/
 │  └─ ...
-├─ clawradar-skill/             # ClawRadar 单文件 Skill 的仓库内维护目录
+├─ clawradar-skill/             # 追踪雷达助手单文件 Skill 的仓库内维护目录
 └─ outputs/                     # 运行输出目录
 ```
 
@@ -172,9 +172,9 @@ python scripts/run_real_source_demo.py
 
 说明：
 
-- Skill 名称现为 `clawradar`；
+- Skill 名称现为 `追踪雷达助手`；
+- 可使用的近似唤醒词包括 `追踪雷达`、`雷达助手`、`选题雷达助手`、`舆情追踪助手` 与 `ClawRadar`；
 - 仓库内维护副本位于 `clawradar-skill/SKILL.md`；
-- 自定义 Skill 打包时推荐目录为 `clawradar/Skill.md`；
 - 当前项目对外主口径仍然是 `ClawRadar`。
 
 这个 Skill 的定位不是重新实现一套平行编排，而是把调用统一收口到当前仓库真实入口：
@@ -182,6 +182,11 @@ python scripts/run_real_source_demo.py
 - Python API：`topic_radar_orchestrate()`
 - CLI launcher：`run_openclaw_deliverable.py`
 - Skill 仓库内维护文件：`clawradar-skill/SKILL.md`
+
+额外约束：
+
+- 如果用户明确要求使用这个 Skill，真实数据必须由仓库自己的 `real_source` 或 `user_topic -> real_source` 链路抓取；
+- 不能先由 agent 自己搜索、抓取、整理，再伪装成 Skill 输出或中间工件。
 
 适用场景：
 
