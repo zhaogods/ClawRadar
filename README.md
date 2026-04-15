@@ -4,9 +4,9 @@
 
 **面向真实来源热点发现、结构化评分、内容生成与归档交付的开源舆情流水线**
 
-**中文：一个用于热点发现、证据组织、内容生成与归档交付的开源舆情工作流。**
+**一个用于热点发现、证据组织、内容生成与归档交付的开源舆情工作流。**
 
-**English: An open-source public-opinion workflow for trend discovery, evidence structuring, content generation, and archived delivery.**
+**An open-source public-opinion workflow for trend discovery, evidence structuring, content generation, and archived delivery.**
 
 ![License](https://img.shields.io/badge/license-GPL--2.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)
