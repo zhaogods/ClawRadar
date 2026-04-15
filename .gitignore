@@ -6,6 +6,7 @@ __pycache__/
 .pytest_cache/
 .claude/
 .roo/
+.tmp/
 2026-04-14-164233-this-session-is-being-continued-from-a-previous-c.txt
 
 # Local rerun artifacts; keep checked-in stage10 baseline evidence files.

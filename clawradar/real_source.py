@@ -87,9 +87,9 @@ def _load_first_available_module(module_names: Sequence[str], *, capability_labe
 def _load_settings():
     module = _load_first_available_module(
         (
+            "radar_engines.config",
             "config",
             "ClawRadar.config",
-            "radar_engines.config",
             "BettaFish.config",
         ),
         capability_label="OpenClaw settings",
@@ -131,6 +131,10 @@ def _load_media_engine_search_module():
         ),
         capability_label="MediaEngine search",
     )
+
+
+def _settings_value(name: str) -> Any:
+    return getattr(_load_settings(), name, None)
 
 
 def _collect_mindspider_news(source_ids: Sequence[str]) -> Tuple[List[Dict[str, Any]], Dict[str, str], str]:
@@ -457,7 +461,7 @@ def _build_topic_search_query(context: Dict[str, Any]) -> str:
 
 def _search_with_tavily(query: str) -> List[Dict[str, Any]]:
     search_module = _load_query_engine_search_module()
-    client = search_module.TavilyNewsAgency(api_key=_load_settings().TAVILY_API_KEY)
+    client = search_module.TavilyNewsAgency(api_key=_settings_value("TAVILY_API_KEY"))
     response = client.search_news_last_week(query)
     return [
         {
@@ -477,7 +481,7 @@ def _search_with_tavily(query: str) -> List[Dict[str, Any]]:
 
 def _search_with_bocha(query: str) -> List[Dict[str, Any]]:
     search_module = _load_media_engine_search_module()
-    client = search_module.BochaMultimodalSearch(api_key=_load_settings().BOCHA_WEB_SEARCH_API_KEY)
+    client = search_module.BochaMultimodalSearch(api_key=_settings_value("BOCHA_WEB_SEARCH_API_KEY"))
     response = client.search_last_week(query)
     return [
         {
@@ -497,7 +501,7 @@ def _search_with_bocha(query: str) -> List[Dict[str, Any]]:
 
 def _search_with_anspire(query: str, limit: int) -> List[Dict[str, Any]]:
     search_module = _load_media_engine_search_module()
-    client = search_module.AnspireAISearch(api_key=_load_settings().ANSPIRE_API_KEY)
+    client = search_module.AnspireAISearch(api_key=_settings_value("ANSPIRE_API_KEY"))
     response = client.search_last_week(query, max_results=limit)
     return [
         {
@@ -617,12 +621,15 @@ def _map_topic_search_item_to_candidate(
 
 def _search_topic_news(context: Dict[str, Any], *, limit: int) -> Tuple[List[Dict[str, Any]], str, List[Dict[str, Any]]]:
     query = _build_topic_search_query(context)
+    tavily_api_key = _settings_value("TAVILY_API_KEY")
+    bocha_api_key = _settings_value("BOCHA_WEB_SEARCH_API_KEY")
+    anspire_api_key = _settings_value("ANSPIRE_API_KEY")
     provider_attempts: List[Tuple[str, Any]] = []
-    if _load_settings().TAVILY_API_KEY:
+    if tavily_api_key:
         provider_attempts.append(("tavily_news", _search_with_tavily))
-    if _load_settings().BOCHA_WEB_SEARCH_API_KEY:
+    if bocha_api_key:
         provider_attempts.append(("bocha_search", _search_with_bocha))
-    if _load_settings().ANSPIRE_API_KEY:
+    if anspire_api_key:
         provider_attempts.append(("anspire_search", lambda raw_query: _search_with_anspire(raw_query, limit)))
 
     if not provider_attempts:

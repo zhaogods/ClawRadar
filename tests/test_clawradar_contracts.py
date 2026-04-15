@@ -1,8 +1,10 @@
 import json
 import unittest
 from copy import deepcopy
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from clawradar import real_source
 from clawradar.contracts import normalize_ingest_payload
 from clawradar.real_source import RealSourceUnavailableError, load_real_source_payload
 
@@ -179,6 +181,9 @@ class ClawRadarContractsTestCase(unittest.TestCase):
 
 
 class clawradarRealSourceAdapterTestCase(unittest.TestCase):
+    def tearDown(self):
+        real_source._load_settings.cache_clear()
+
     def _build_input_payload(self):
         return {
             "request_id": "req-stage7-real-source",
@@ -244,6 +249,39 @@ class clawradarRealSourceAdapterTestCase(unittest.TestCase):
         with patch("clawradar.real_source._collect_mindspider_news", return_value=(mock_results, {"weibo": "微博热搜"}, "https://newsnow.busiyi.world")):
             with self.assertRaises(RealSourceUnavailableError):
                 load_real_source_payload(payload)
+
+
+    def test_load_settings_prefers_repo_local_config_module(self):
+        wrong_module = SimpleNamespace(settings=SimpleNamespace())
+        expected_settings = SimpleNamespace(TAVILY_API_KEY="configured")
+        right_module = SimpleNamespace(settings=expected_settings)
+
+        def fake_import(module_name):
+            if module_name == "radar_engines.config":
+                return right_module
+            if module_name == "config":
+                return wrong_module
+            raise ModuleNotFoundError(module_name)
+
+        with patch("clawradar.real_source.import_module", side_effect=fake_import):
+            real_source._load_settings.cache_clear()
+            settings = real_source._load_settings()
+
+        self.assertIs(settings, expected_settings)
+
+    def test_search_topic_news_without_known_api_key_attrs_fails_gracefully(self):
+        context = {
+            "topic": "OpenAI 企业级智能体平台",
+            "company": "OpenAI",
+            "track": "企业服务",
+            "keywords": ["智能体"],
+        }
+
+        with patch("clawradar.real_source._load_settings", return_value=SimpleNamespace()):
+            with self.assertRaises(RealSourceUnavailableError) as exc_info:
+                real_source._search_topic_news(context, limit=3)
+
+        self.assertIn("no search provider configured", str(exc_info.exception))
 
 
 if __name__ == "__main__":

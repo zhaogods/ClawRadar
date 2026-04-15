@@ -1,7 +1,7 @@
 interface:
   display_name: "ClawRadar Topic Radar"
   short_description: "Run the repository's ClawRadar workflow from user topics, real sources, or existing artifacts."
-  default_prompt: "Use $openclaw-topic-radar to run the current repository's topic radar workflow with a minimal payload."
+  default_prompt: "Use $openclaw-topic-radar to run the repository workflow directly. Do not pre-fetch, pre-search, or manually synthesize real_source data outside the skill."
 
 policy:
   allow_implicit_invocation: true

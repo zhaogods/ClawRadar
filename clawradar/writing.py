@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import socket
 import sys
 from copy import deepcopy
 from enum import Enum
@@ -11,6 +13,7 @@ from html import unescape
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from urllib.parse import urlparse
 
 from .scoring import ScoreDecisionStatus, ScoreRunStatus, ScoreValidationError, validate_score_payload
 
@@ -354,6 +357,57 @@ def _build_report_engine_config_overrides(payload: Dict[str, Any]) -> Dict[str, 
     }
 
 
+def _default_port_for_scheme(scheme: str) -> int:
+    normalized = str(scheme or "").strip().lower()
+    if normalized in {"https", "wss"}:
+        return 443
+    if normalized.startswith("socks"):
+        return 1080
+    return 80
+
+
+def _connection_target(label: str, raw_url: str) -> Optional[Tuple[str, str, int]]:
+    parsed = urlparse(str(raw_url or "").strip())
+    if not parsed.hostname:
+        return None
+    port = parsed.port or _default_port_for_scheme(parsed.scheme)
+    return label, parsed.hostname, int(port)
+
+
+def _iter_connectivity_targets(agent: Any) -> List[Tuple[str, str, int]]:
+    targets: List[Tuple[str, str, int]] = []
+    seen = set()
+    llm_client = getattr(agent, "llm_client", None)
+    if llm_client is None:
+        return targets
+
+    for env_name in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        env_value = str(os.getenv(env_name) or "").strip()
+        target = _connection_target(f"{env_name}={env_value}", env_value)
+        if target is None or target[1:] in seen:
+            continue
+        seen.add(target[1:])
+        targets.append(target)
+
+    base_url = getattr(llm_client, "base_url", None)
+    target = _connection_target(f"base_url={base_url}", str(base_url or "").strip())
+    if target is not None and target[1:] not in seen:
+        targets.append(target)
+
+    return targets
+
+
+def _assert_external_writer_connectivity(agent: Any, *, timeout_seconds: float = 3.0) -> None:
+    for label, host, port in _iter_connectivity_targets(agent):
+        try:
+            with socket.create_connection((host, port), timeout=timeout_seconds):
+                continue
+        except OSError as exc:
+            raise RuntimeError(
+                f"external_writer connectivity preflight failed for {label}: {host}:{port} is unreachable ({exc})"
+            ) from exc
+
+
 def _json_dump(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
 
@@ -611,6 +665,31 @@ def _topic_radar_write_external(normalized_payload: Dict[str, Any], *, operation
             agent = agent_factory(config_overrides=_build_report_engine_config_overrides(normalized_payload))
         except TypeError:
             agent = agent_factory()
+        except Exception as exc:
+            writer_receipts.append(
+                {
+                    "event_id": write_request["event_id"],
+                    "executor": WriteExecutor.EXTERNAL_WRITER.value,
+                    "status": WriteRunStatus.FAILED.value,
+                    "operation": operation,
+                    "query": write_request["query"],
+                    "failure_info": {
+                        "code": WriteErrorCode.WRITER_UNAVAILABLE.value,
+                        "message": str(exc),
+                    },
+                }
+            )
+            errors.append(
+                {
+                    "code": WriteErrorCode.WRITER_UNAVAILABLE.value,
+                    "message": str(exc),
+                    "missing_fields": [],
+                }
+            )
+            continue
+
+        try:
+            _assert_external_writer_connectivity(agent)
         except Exception as exc:
             writer_receipts.append(
                 {

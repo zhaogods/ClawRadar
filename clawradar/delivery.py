@@ -383,10 +383,7 @@ def _slugify_timestamp(delivery_time: str) -> str:
 def _relative_path(path: Optional[Path]) -> Optional[str]:
     if path is None:
         return None
-    try:
-        return path.resolve().relative_to(WORKSPACE_ROOT).as_posix()
-    except ValueError:
-        return path.resolve().as_posix()
+    return path.resolve().as_posix()
 
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> None:

@@ -1,6 +1,7 @@
 import json
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from clawradar.writing import WriteExecutor, WriteOperation, build_write_rejection, topic_radar_write
@@ -98,7 +99,9 @@ class ClawRadarWritingTestCase(unittest.TestCase):
                 self.kwargs = kwargs
                 return fake_result
 
-        with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()):
+        with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()), patch(
+            "clawradar.writing._assert_external_writer_connectivity"
+        ):
             result = topic_radar_write(payload, executor=WriteExecutor.EXTERNAL_WRITER.value)
 
         self.assertEqual(result["run_status"], "succeeded")
@@ -111,6 +114,31 @@ class ClawRadarWritingTestCase(unittest.TestCase):
         self.assertIn("report_artifacts", bundle)
         self.assertEqual(bundle["writer_receipt"]["report_id"], "report-stage8-001")
         self.assertEqual(bundle["report_artifacts"]["state_relative_path"], "outputs/final_reports/report_state.json")
+
+    def test_external_writer_fails_fast_when_connectivity_preflight_detects_unreachable_proxy(self):
+        payload = self._load_fixture("clawradar_write_publish_ready_input.json")
+
+        class FakeAgent:
+            llm_client = SimpleNamespace(base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
+
+            def generate_report(self, **kwargs):
+                raise AssertionError("generate_report should not run after fail-fast preflight")
+
+        with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()), patch.dict(
+            "os.environ",
+            {"HTTPS_PROXY": "http://127.0.0.1:9"},
+            clear=False,
+        ), patch(
+            "clawradar.writing.socket.create_connection",
+            side_effect=ConnectionRefusedError("[WinError 10061] target actively refused connection"),
+        ):
+            result = topic_radar_write(payload, executor=WriteExecutor.EXTERNAL_WRITER.value)
+
+        self.assertEqual(result["run_status"], "failed")
+        self.assertEqual(result["executor"], "external_writer")
+        self.assertEqual(result["errors"][0]["code"], "writer_unavailable")
+        self.assertIn("connectivity preflight failed", result["errors"][0]["message"])
+        self.assertEqual(result["writer_receipts"][0]["failure_info"]["code"], "writer_unavailable")
 
 
 if __name__ == "__main__":
