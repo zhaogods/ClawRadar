@@ -1,70 +1,44 @@
-<div align="center">
+﻿# ClawRadar
 
-# ClawRadar
+面向真实来源热点发现、结构化评分、内容生成与归档交付的开源舆情流水线。
 
-**面向真实来源热点发现、结构化评分、内容生成与归档交付的开源舆情流水线**
+当前仓库分成两层：
 
-**一个用于热点发现、证据组织、内容生成与归档交付的开源舆情工作流。**
+- `clawradar/`：顶层统一编排主线，负责入口、契约、测试和正式 launcher。
+- `radar_engines/`：当前保留的能力层，现阶段完整保留 `MindSpider`、`QueryEngine`、`MediaEngine`、`ReportEngine` 四个引擎，以及它们依赖的共享基础设施。
 
-**An open-source public-opinion workflow for trend discovery, evidence structuring, content generation, and archived delivery.**
+这轮改造的目标是先剥掉旧平台外壳，再讨论四个引擎内部如何继续瘦身。现在不做四引擎内部裁剪。
 
-![License](https://img.shields.io/badge/license-GPL--2.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)
-
-</div>
-
-ClawRadar 是一个开源 Python 项目，聚焦舆情选题、评分、写作和交付。当前仓库包含两层结构：
-
-- 顶层 `clawradar/`：更聚焦的交付工作流主线，提供统一入口、结构化契约、测试夹具和正式 launcher。
-- `radar_engines/`：保留的原始能力层，包含 `MindSpider`、`QueryEngine`、`MediaEngine`、`InsightEngine`、`ReportEngine` 等模块，供顶层流程复用。
-
-这个仓库更接近“可编排的舆情流水线”而不是单一脚本。核心目标是把候选事件从输入接入，一路处理到评分、成稿和归档交付。
-
-## 项目描述
+## 项目概览
 
 ClawRadar 试图把“舆情发现 -> 证据组织 -> 评分决策 -> 写作产出 -> 归档交付”收敛到同一条可复用链路里。它既可以作为独立命令行流程运行，也可以作为上层系统调用的协议化组件使用。
 
 ![ClawRadar 框架图](./image/clawradar-framework.png)
 
-当前顶层实现主要面向可审核交付场景，强调：
+当前顶层实现强调四点：
 
 - 统一入口，而不是分散脚本
 - 结构化中间产物，而不是仅返回文本
 - 可归档、可回放、可审计的运行结果
 - 与 `radar_engines/` 能力层复用，而不是重复造轮子
 
-## 致谢
+## 当前入口
 
-本项目的能力层整理与兼容保留，参考并受益于开源项目 [BettaFish](https://github.com/666ghj/BettaFish)。感谢原项目作者与贡献者。
-
-## 文档入口
-
-如果你想快速理解当前仓库，建议优先看这几份文档：
-
-- 项目首页说明：[README.md](F:\02_code\ClawRadar\README.md)
-- 统一入口使用说明：[使用.md](F:\02_code\ClawRadar\使用.md)
-- 正式 Skill 说明：[clawradar-skill/SKILL.md](F:\02_code\ClawRadar\clawradar-skill\SKILL.md)
-- 比赛稿重写版：[openclaw-doc/archive/比赛论坛投稿重写稿-当前项目版.md](F:\02_code\ClawRadar\openclaw-doc\archive\比赛论坛投稿重写稿-当前项目版.md)
-
-## 当前实现重点
-
-顶层 `clawradar` 已经把主流程收敛到了一个统一入口：
+顶层主入口是：
 
 ```python
 from clawradar.orchestrator import topic_radar_orchestrate
 ```
 
-围绕这个入口，项目已经实现了以下能力：
+围绕这个入口，项目已经具备这些能力：
 
-![ClawRadar 演示结果图](./image/clawradar-demo-result.jpg)
-
-- 输入适配：支持 `inline_candidates`、`inline_normalized`、`inline_topic_cards`、`real_source`、`user_topic` 五类输入模式。
-- 标准化 ingest：把上游候选事件收敛成统一的 `normalized_events` 结构。
-- 选题与抓取桥接：支持从真实来源加载候选事件，或从用户主题派生抓取请求。
-- 结构化评分：生成时间线、事实点、风险标记、维度分和最终决策。
-- 写作阶段：支持内置写作，也支持委托 `ReportEngine` 作为外部 writer。
-- 交付阶段：支持飞书消息格式和本地归档快照。
-- 编排与产物管理：每次运行都会生成 `meta/`、`stages/`、`events/` 等输出目录。
+- 输入适配：`inline_candidates`、`inline_normalized`、`inline_topic_cards`、`real_source`、`user_topic`
+- 标准化 ingest：收敛为统一的 `normalized_events`
+- 选题与抓取桥接：支持真实来源加载，也支持从用户主题派生抓取请求
+- 结构化评分：生成时间线、事实点、风险标记、维度分和最终决策
+- 写作阶段：支持内置写作，也支持委托 `ReportEngine` 作为外部 writer
+- 交付阶段：支持飞书消息格式和本地归档快照
+- 编排与产物管理：每次运行都会生成 `meta/`、`stages/`、`events/` 等输出目录
 
 ## 仓库结构
 
@@ -73,7 +47,7 @@ ClawRadar/
 ├─ clawradar/                   # 顶层工作流主线
 │  ├─ contracts.py              # ingest 契约与标准化
 │  ├─ topics.py                 # 选题卡片、user_topic 适配
-│  ├─ real_source.py            # real_source 适配，复用 MindSpider / 搜索能力
+│  ├─ real_source.py            # real_source 适配
 │  ├─ scoring.py                # 评分与决策
 │  ├─ writing.py                # 写作与外部 writer 适配
 │  ├─ delivery.py               # 交付与归档
@@ -82,30 +56,50 @@ ClawRadar/
 ├─ scripts/
 │  └─ run_real_source_demo.py   # real_source 演示脚本
 ├─ tests/                       # 顶层主线测试
-├─ radar_engines/               # 原始多引擎能力层
-│  ├─ MindSpider/               # 热点采集与爬取
-│  ├─ QueryEngine/
-│  ├─ MediaEngine/
-│  ├─ InsightEngine/
-│  ├─ ReportEngine/
-│  └─ ...
-├─ clawradar-skill/             # 追踪雷达助手单文件 Skill 的仓库内维护目录
+├─ radar_engines/               # 当前保留的能力层
+│  ├─ MindSpider/               # 热点采集与深爬能力
+│  ├─ QueryEngine/              # 通用搜索能力
+│  ├─ MediaEngine/              # 多模态搜索能力
+│  ├─ ReportEngine/             # 报告生成与渲染能力
+│  ├─ static/                   # ReportEngine 仍在使用的静态资源
+│  ├─ utils/                    # 共享工具
+│  └─ config.py                 # 共享配置入口
+├─ clawradar-skill/             # 单文件 Skill 的仓库内维护目录
 └─ outputs/                     # 运行输出目录
 ```
 
+## `radar_engines` 当前边界
+
+当前策略是保留四个引擎整体，不做内部子功能裁剪。
+
+保留的引擎：
+
+- `MindSpider`
+- `QueryEngine`
+- `MediaEngine`
+- `ReportEngine`
+
+当前仍需保留的共享基础设施：
+
+- `radar_engines/config.py`
+- `radar_engines/utils/`
+- `radar_engines/static/`
+
+已经删除的旧平台外壳包括：`ForumEngine`、`InsightEngine`、`SingleEngineApp`、`SentimentAnalysisModel`、旧的 Streamlit 报告目录、旧测试目录和旧入口脚本。
+
 ## 主流程
 
-顶层流程由 `topic_radar_orchestrate()` 负责串联。按职责可以理解为：
+`topic_radar_orchestrate()` 负责主链路串联：
 
 1. 接收输入并解析 `entry_options`
 2. 根据输入模式决定是否走 `real_source` / `user_topic` 适配
 3. 生成候选事件并做 ingest 标准化
-4. 对候选事件进行评分，得出 `publish_ready`、`watchlist`、`need_more_evidence` 等结论
+4. 对候选事件进行评分，得到 `publish_ready`、`watchlist`、`need_more_evidence` 等结论
 5. 对可发布事件生成内容包
 6. 执行交付或归档
 7. 输出统一的 `run_summary`、阶段状态和事件状态
 
-默认情况下，正式 launcher 使用的策略是：
+正式 launcher 默认策略：
 
 - `write.executor = external_writer`
 - `delivery.target_mode = archive_only`
@@ -116,11 +110,11 @@ ClawRadar/
 
 ## 快速开始
 
-### 1. 环境建议
+### 环境建议
 
-仓库顶层代码使用了 Python 3.10+ 语法，建议直接使用 Python 3.10 或 3.11。
+仓库顶层代码使用 Python 3.10+ 语法，建议使用 Python 3.10 或 3.11。
 
-如果你只想跑顶层契约测试，最小依赖很少；如果你要启用 `real_source`、外部写作或完整的引擎能力，建议安装项目根目录 `requirements.txt` 中的依赖。
+如果你只想跑顶层契约测试，最小依赖很少；如果你要启用 `real_source`、外部写作或完整引擎能力，建议安装项目根目录 `requirements.txt` 中的依赖。
 
 ```bash
 python -m venv .venv
@@ -129,7 +123,7 @@ pip install -r requirements.txt
 pip install pytest
 ```
 
-### 2. 最小 Python 调用
+### 最小 Python 调用
 
 ```python
 from clawradar.orchestrator import topic_radar_orchestrate
@@ -151,16 +145,14 @@ result = topic_radar_orchestrate(payload)
 print(result["run_status"], result["final_stage"], result["decision_status"])
 ```
 
-### 3. 正式 launcher
-
-从命令行运行时，优先使用根目录的 `run_openclaw_deliverable.py`：
+### 正式 launcher
 
 ```bash
 python run_openclaw_deliverable.py --input-mode real_source --source-ids weibo --limit 5
 python run_openclaw_deliverable.py --input-mode user_topic --topic "AI 智能体治理" --company "OpenAI" --keywords 治理 审计
 ```
 
-### 4. real_source 演示
+### real_source 演示
 
 ```bash
 python scripts/run_real_source_demo.py
@@ -168,64 +160,9 @@ python scripts/run_real_source_demo.py
 
 这个脚本会关闭写作和交付，只保留真实来源加载和评分，便于本地验证输入适配链路。
 
-## Skill 说明
-
-仓库内已经提供了一个可直接复用的 Skill：
-
-- [clawradar-skill/SKILL.md](F:\02_code\ClawRadar\clawradar-skill\SKILL.md)
-
-说明：
-
-- Skill 名称现为 `追踪雷达助手`；
-- 可使用的近似唤醒词包括 `追踪雷达`、`雷达助手`、`选题雷达助手`、`舆情追踪助手` 与 `ClawRadar`；
-- 仓库内维护副本位于 `clawradar-skill/SKILL.md`；
-- 当前项目对外主口径仍然是 `ClawRadar`。
-
-这个 Skill 的定位不是重新实现一套平行编排，而是把调用统一收口到当前仓库真实入口：
-
-- Python API：`topic_radar_orchestrate()`
-- CLI launcher：`run_openclaw_deliverable.py`
-- Skill 仓库内维护文件：`clawradar-skill/SKILL.md`
-
-额外约束：
-
-- 如果用户明确要求使用这个 Skill，真实数据必须由仓库自己的 `real_source` 或 `user_topic -> real_source` 链路抓取；
-- 不能先由 agent 自己搜索、抓取、整理，再伪装成 Skill 输出或中间工件。
-
-适用场景：
-
-- 用 `user_topic` 触发一轮完整舆情流程
-- 用 `real_source` 先抓热点再继续评分
-- 从已有 `topic_cards`、`normalized_events`、`scored_events` 或 `content_bundle` 继续执行
-
-Skill 默认行为：
-
-- `execution_mode = full_pipeline`
-- `write.executor = external_writer`
-- `delivery.target_mode = archive_only`
-- `delivery.target = archive://clawradar`
-
-典型调用示例：
-
-```bash
-python run_openclaw_deliverable.py --input-mode user_topic --topic "OpenAI 企业级智能体平台" --company "OpenAI" --keywords 智能体 企业服务
-python run_openclaw_deliverable.py --scored-events-file scored_events.json --execution-mode resume
-python run_openclaw_deliverable.py --content-bundle-file content_bundle.json --execution-mode deliver_only
-```
-
-当前推荐把 Skill 维护为单文件：
-
-- [clawradar-skill/SKILL.md](F:\02_code\ClawRadar\clawradar-skill\SKILL.md)
-
-说明：
-
-- `clawradar-skill/` 下其余文件属于旧版多文件方案遗留；
-- 它们不是新 Skill 定义的必需部分；
-- 是否删除这些遗留文件，需要用户单独确认后再执行。
-
 ## 输入模式
 
-统一入口当前最重要的两种外部输入模式如下：
+当前最重要的外部输入模式：
 
 - `real_source`：从 `MindSpider` 等真实来源拉取热点候选事件，再进入统一主链路。
 - `user_topic`：用户只给主题、公司、关键词等提示词，系统先构造主题上下文，再委托真实来源层做候选发现。
@@ -247,31 +184,18 @@ python run_openclaw_deliverable.py --content-bundle-file content_bundle.json --e
 - `events/`：按事件维度归档的评分卡、payload 快照、交付产物
 - `reports/`：最终报告、IR、中间章节和日志
 
-这套输出结构适合做审计、回放和单事件重试。
-
 ## 测试
-
-顶层 `tests/` 已覆盖 ingest、评分、写作、交付和 orchestrator 自动化主路径。建议先跑这组测试确认协议稳定：
 
 ```bash
 python -m pytest tests
 ```
 
-从现有测试可以看出，当前顶层主线重点验证的是：
+当前顶层主线重点验证的是：
 
 - 统一入口的行为一致性
 - `publish_ready` / `need_more_evidence` 等状态路由
 - 写作与交付阶段的协议稳定性
 - 归档产物是否完整落盘
-
-## `radar_engines` 的定位
-
-`radar_engines/` 不是顶层入口的替代品，而是被复用的能力层和兼容层。当前顶层流程至少会复用其中两类能力：
-
-- `MindSpider`：真实来源热点采集
-- `ReportEngine`：外部 writer 生成报告
-
-如果你只是要接入统一编排，不需要直接从 `radar_engines/` 启动整套旧系统；如果你要扩展采集、搜索、报告渲染或多智能体分析，再进入该目录阅读原始模块会更合适。
 
 ## 适合从哪里开始读
 
@@ -285,22 +209,14 @@ python -m pytest tests
 6. `clawradar/delivery.py`
 7. `tests/test_clawradar_automation.py`
 
-这样能先看清入口和协议，再看阶段能力，最后用测试理解真实约束。
-
 ## 注意事项
 
-- 当前仓库里同时保留了新旧两层实现，阅读时不要把 `clawradar/` 和 `radar_engines/` 当成两套并列入口。
-- `real_source` 和 `external_writer` 依赖 `radar_engines/` 中的模块以及对应运行环境，不是纯标准库能力。
-- 项目里有一些历史文档和兼容文件，可能存在编码或命名风格不一致的情况；以顶层 `clawradar/` 和 `tests/` 的真实实现为准。
+- 当前仓库里同时保留了顶层编排和遗留能力层，阅读时不要把 `clawradar/` 和 `radar_engines/` 当成两套并列入口。
+- `real_source` 和 `external_writer` 目前仍依赖 `radar_engines/` 中的模块以及对应运行环境。
+- `ReportEngine` 内部仍保留少量对已删除旧模块的兼容引用，这些属于后续清理对象，不影响当前“四引擎整体保留”的边界。
 
 ## 开源协议
 
 本仓库根目录已采用 [GPL-2.0](./LICENSE) 开源协议。
 
-这与 `radar_engines/` 目录中已有的许可证口径保持一致，便于仓库作为一个整体对外发布。
-
-如果你后续准备拆分子模块、二次分发或引入新的第三方组件，仍然建议逐目录核对：
-
-- 根目录 [LICENSE](./LICENSE)
-- [radar_engines/LICENSE](./radar_engines/LICENSE)
-- 各子目录附带的第三方许可证文件
+如果你后续准备拆分子模块、二次分发或引入新的第三方组件，仍然建议逐目录核对相关许可证文件。

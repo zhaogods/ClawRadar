@@ -1,4 +1,4 @@
-"""阶段七：统一入口 real_source 适配，复用 MindSpider BroadTopicExtraction 热点采集。"""
+"""ClawRadar real_source adapters for source-driven and user-topic ingestion."""
 
 from __future__ import annotations
 
@@ -11,14 +11,14 @@ from importlib import import_module
 from typing import Any, Dict, List, Sequence, Tuple
 
 DEFAULT_REAL_SOURCE_PROVIDER = "mindspider_broad_topic_today_news"
-DEFAULT_REAL_SOURCE_IDS: Tuple[str, ...] = ("weibo",)
-DEFAULT_REAL_SOURCE_LIMIT = 5
+DEFAULT_REAL_SOURCE_IDS: Tuple[str, ...] = ("weibo", "zhihu", "36kr")
+DEFAULT_REAL_SOURCE_LIMIT = 10
 DEFAULT_TOPIC_DRIVEN_PROVIDER = "topic_driven_news_search"
-DEFAULT_TOPIC_DRIVEN_LIMIT = 5
+DEFAULT_TOPIC_DRIVEN_LIMIT = 10
 
 
 class RealSourceUnavailableError(RuntimeError):
-    """真实来源不可用。"""
+    """Raised when real-source fetching cannot produce usable candidates."""
 
 
 def _utc_timestamp() -> str:
@@ -75,12 +75,10 @@ def _load_first_available_module(module_names: Sequence[str], *, capability_labe
     for module_name in module_names:
         try:
             return import_module(module_name)
-        except Exception as exc:  # pragma: no cover - exercised via adapter error path
+        except Exception as exc:  # pragma: no cover
             import_errors.append(f"{module_name}: {exc}")
 
-    raise RealSourceUnavailableError(
-        f"{capability_label} 不可用: " + " | ".join(import_errors)
-    )
+    raise RealSourceUnavailableError(f"{capability_label} unavailable: " + " | ".join(import_errors))
 
 
 @lru_cache(maxsize=1)
@@ -97,7 +95,6 @@ def _load_settings():
     return module.settings
 
 
-
 def _load_mindspider_module():
     return _load_first_available_module(
         (
@@ -109,7 +106,6 @@ def _load_mindspider_module():
     )
 
 
-
 def _load_query_engine_search_module():
     return _load_first_available_module(
         (
@@ -119,7 +115,6 @@ def _load_query_engine_search_module():
         ),
         capability_label="QueryEngine search",
     )
-
 
 
 def _load_media_engine_search_module():
@@ -141,7 +136,7 @@ def _collect_mindspider_news(source_ids: Sequence[str]) -> Tuple[List[Dict[str, 
     module = _load_mindspider_module()
     collector_class = getattr(module, "NewsCollector", None)
     if collector_class is None:
-        raise RealSourceUnavailableError("MindSpider BroadTopicExtraction 缺少 NewsCollector")
+        raise RealSourceUnavailableError("MindSpider BroadTopicExtraction missing NewsCollector")
 
     source_names = dict(getattr(module, "SOURCE_NAMES", {}) or {})
     base_url = str(getattr(module, "BASE_URL", "https://newsnow.busiyi.world")).rstrip("/")
@@ -153,7 +148,7 @@ def _collect_mindspider_news(source_ids: Sequence[str]) -> Tuple[List[Dict[str, 
     try:
         results = asyncio.run(collector.get_popular_news(list(source_ids)))
     except Exception as exc:
-        raise RealSourceUnavailableError(f"MindSpider 热点采集失败: {exc}") from exc
+        raise RealSourceUnavailableError(f"MindSpider hot news collection failed: {exc}") from exc
     finally:
         close_method = getattr(collector, "close", None)
         if callable(close_method):
@@ -163,7 +158,7 @@ def _collect_mindspider_news(source_ids: Sequence[str]) -> Tuple[List[Dict[str, 
                 pass
 
     if not isinstance(results, list):
-        raise RealSourceUnavailableError("MindSpider 热点采集结果格式无效")
+        raise RealSourceUnavailableError("MindSpider hot news collection returned an invalid payload")
 
     return results, source_names, base_url
 
@@ -178,9 +173,9 @@ def _build_fact_candidates(
     rank: Any,
 ) -> List[Dict[str, Any]]:
     rank_text = str(rank).strip()
-    ranking_claim = f"该话题来自{source_name}热点榜单"
+    ranking_claim = f"This topic came from the {source_name} trending list"
     if rank_text:
-        ranking_claim = f"{ranking_claim}，当前榜单位置为第{rank_text}位"
+        ranking_claim = f"{ranking_claim}, current rank #{rank_text}"
 
     return [
         {
@@ -224,13 +219,7 @@ def _map_news_item_to_candidate(
         item.get("event_time") or item.get("publish_time") or item.get("ctime") or item.get("timestamp") or result_timestamp,
         fallback=collected_at,
     )
-    raw_excerpt = str(
-        item.get("desc")
-        or item.get("digest")
-        or item.get("content")
-        or item.get("hot")
-        or title
-    ).strip()
+    raw_excerpt = str(item.get("desc") or item.get("digest") or item.get("content") or item.get("hot") or title).strip()
 
     return {
         "event_id": event_id,
@@ -246,7 +235,7 @@ def _map_news_item_to_candidate(
             {
                 "timestamp": collected_at,
                 "label": "real_source_collected",
-                "summary": f"OpenClaw 通过 MindSpider 的 {source_name} 热点采集接入该候选事件",
+                "summary": f"OpenClaw collected this candidate from MindSpider {source_name} trending feed",
                 "source_url": source_url,
                 "source_type": f"mindspider:{source_id}",
             }
@@ -272,6 +261,47 @@ def _map_news_item_to_candidate(
     }
 
 
+def _dedupe_candidates_by_source_url(candidates: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    deduplicated: List[Dict[str, Any]] = []
+    seen_keys = set()
+    for candidate in candidates:
+        source_url = str(candidate.get("source_url") or "").strip().lower()
+        event_id = str(candidate.get("event_id") or "").strip().lower()
+        dedupe_key = source_url or event_id
+        if not dedupe_key or dedupe_key in seen_keys:
+            continue
+        seen_keys.add(dedupe_key)
+        deduplicated.append(candidate)
+    return deduplicated
+
+
+def _round_robin_take(grouped_items: Sequence[Sequence[Dict[str, Any]]], *, limit: int, key_field: str) -> List[Dict[str, Any]]:
+    buckets: List[List[Dict[str, Any]]] = [list(items) for items in grouped_items if items]
+    merged: List[Dict[str, Any]] = []
+    seen_keys = set()
+
+    while buckets and len(merged) < limit:
+        next_buckets: List[List[Dict[str, Any]]] = []
+        for bucket in buckets:
+            while bucket and len(merged) < limit:
+                candidate = bucket.pop(0)
+                key = str(candidate.get(key_field) or "").strip().lower()
+                if not key:
+                    key = str(candidate.get("event_id") or "").strip().lower()
+                if not key or key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                merged.append(candidate)
+                break
+            if bucket:
+                next_buckets.append(bucket)
+            if len(merged) >= limit:
+                break
+        buckets = next_buckets
+
+    return merged
+
+
 def _load_source_driven_payload(payload: Dict[str, Any], input_options: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     requested_source_ids = _normalize_source_ids(
         input_options.get("source_ids")
@@ -286,7 +316,7 @@ def _load_source_driven_payload(payload: Dict[str, Any], input_options: Dict[str
 
     results, source_names, base_url = _collect_mindspider_news(requested_source_ids)
 
-    topic_candidates: List[Dict[str, Any]] = []
+    grouped_candidates: List[List[Dict[str, Any]]] = []
     applied_source_ids: List[str] = []
     failed_sources: List[Dict[str, Any]] = []
 
@@ -302,7 +332,7 @@ def _load_source_driven_payload(payload: Dict[str, Any], input_options: Dict[str
                     "source_id": source_id,
                     "source_name": source_name,
                     "status": status,
-                    "error": str(result.get("error") or "未知错误").strip() or "未知错误",
+                    "error": str(result.get("error") or "unknown error").strip() or "unknown error",
                 }
             )
             continue
@@ -314,14 +344,12 @@ def _load_source_driven_payload(payload: Dict[str, Any], input_options: Dict[str
                     "source_id": source_id,
                     "source_name": source_name,
                     "status": "invalid_payload",
-                    "error": "MindSpider 返回 items 结构无效",
+                    "error": "MindSpider returned invalid items payload",
                 }
             )
             continue
 
-        if source_id not in applied_source_ids:
-            applied_source_ids.append(source_id)
-
+        source_candidates: List[Dict[str, Any]] = []
         for rank, item in enumerate(items, start=1):
             candidate = _map_news_item_to_candidate(
                 item,
@@ -332,17 +360,28 @@ def _load_source_driven_payload(payload: Dict[str, Any], input_options: Dict[str
                 collected_at=collected_at,
                 result_timestamp=result_timestamp,
             )
-            if candidate is None:
-                continue
-            topic_candidates.append(candidate)
-            if len(topic_candidates) >= candidate_limit:
-                break
+            if candidate is not None:
+                source_candidates.append(candidate)
 
-        if len(topic_candidates) >= candidate_limit:
-            break
+        source_candidates = _dedupe_candidates_by_source_url(source_candidates)
+        if not source_candidates:
+            failed_sources.append(
+                {
+                    "source_id": source_id,
+                    "source_name": source_name,
+                    "status": "empty",
+                    "error": "MindSpider returned no usable news items",
+                }
+            )
+            continue
 
+        grouped_candidates.append(source_candidates)
+        if source_id not in applied_source_ids:
+            applied_source_ids.append(source_id)
+
+    topic_candidates = _round_robin_take(grouped_candidates, limit=candidate_limit, key_field="source_url")
     if not topic_candidates:
-        raise RealSourceUnavailableError("MindSpider 未返回可用热点候选事件")
+        raise RealSourceUnavailableError("MindSpider returned no usable topic candidates")
 
     context = {
         "provider": DEFAULT_REAL_SOURCE_PROVIDER,
@@ -359,7 +398,6 @@ def _load_source_driven_payload(payload: Dict[str, Any], input_options: Dict[str
         "topic_candidates": topic_candidates,
         "real_source_context": deepcopy(context),
     }, context
-
 
 
 def _normalize_topic_string_list(value: Any) -> List[str]:
@@ -381,14 +419,12 @@ def _normalize_topic_string_list(value: Any) -> List[str]:
     return deduplicated
 
 
-
 def _first_non_blank(*values: Any) -> str:
     for value in values:
         text = str(value or "").strip()
         if text:
             return text
     return ""
-
 
 
 def _resolve_user_topic_context(payload: Dict[str, Any], input_options: Dict[str, Any]) -> Dict[str, Any]:
@@ -436,7 +472,6 @@ def _resolve_user_topic_context(payload: Dict[str, Any], input_options: Dict[str
     }
 
 
-
 def _build_topic_search_query(context: Dict[str, Any]) -> str:
     tokens = [
         context.get("topic"),
@@ -455,8 +490,7 @@ def _build_topic_search_query(context: Dict[str, Any]) -> str:
             continue
         seen.add(lowered)
         deduplicated.append(text)
-    return " ".join([*deduplicated, "最新新闻"]).strip()
-
+    return " ".join([*deduplicated, "latest news"]).strip()
 
 
 def _search_with_tavily(query: str) -> List[Dict[str, Any]]:
@@ -478,7 +512,6 @@ def _search_with_tavily(query: str) -> List[Dict[str, Any]]:
     ]
 
 
-
 def _search_with_bocha(query: str) -> List[Dict[str, Any]]:
     search_module = _load_media_engine_search_module()
     client = search_module.BochaMultimodalSearch(api_key=_settings_value("BOCHA_WEB_SEARCH_API_KEY"))
@@ -498,7 +531,6 @@ def _search_with_bocha(query: str) -> List[Dict[str, Any]]:
     ]
 
 
-
 def _search_with_anspire(query: str, limit: int) -> List[Dict[str, Any]]:
     search_module = _load_media_engine_search_module()
     client = search_module.AnspireAISearch(api_key=_settings_value("ANSPIRE_API_KEY"))
@@ -516,7 +548,6 @@ def _search_with_anspire(query: str, limit: int) -> List[Dict[str, Any]]:
         for item in response.webpages
         if str(item.name or "").strip() and str(item.url or "").strip()
     ]
-
 
 
 def _build_topic_fact_candidates(
@@ -539,13 +570,12 @@ def _build_topic_fact_candidates(
         },
         {
             "fact_id": f"{event_id}-fact-2",
-            "claim": f"该候选通过 {source_name} 的主题搜索得到，搜索查询为“{query}”，排序位置为第{rank}位。",
+            "claim": f"This candidate was found through {source_name} using query '{query}' at rank #{rank}.",
             "source_url": source_url,
             "confidence": 0.58,
             "citation_excerpt": raw_excerpt or query,
         },
     ]
-
 
 
 def _map_topic_search_item_to_candidate(
@@ -588,7 +618,7 @@ def _map_topic_search_item_to_candidate(
             {
                 "timestamp": collected_at,
                 "label": "user_topic_search_collected",
-                "summary": f"OpenClaw 围绕主题“{context.get('topic')}”通过 {source_name} 检索到该候选事件",
+                "summary": f"OpenClaw searched topic '{context.get('topic')}' via {source_name} and found this candidate",
                 "source_url": source_url,
                 "source_type": source_type,
             }
@@ -618,8 +648,27 @@ def _map_topic_search_item_to_candidate(
     }
 
 
+def _dedupe_search_items(items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    deduplicated: List[Dict[str, Any]] = []
+    seen_urls = set()
+    for item in items:
+        url = str(item.get("url") or "").strip()
+        if not url:
+            continue
+        normalized_url = url.lower()
+        if normalized_url in seen_urls:
+            continue
+        seen_urls.add(normalized_url)
+        deduplicated.append(item)
+    return deduplicated
 
-def _search_topic_news(context: Dict[str, Any], *, limit: int) -> Tuple[List[Dict[str, Any]], str, List[Dict[str, Any]]]:
+
+def _merge_provider_search_results(provider_results: Sequence[Tuple[str, Sequence[Dict[str, Any]]]], *, limit: int) -> List[Dict[str, Any]]:
+    grouped_items = [_dedupe_search_items(items) for _, items in provider_results if items]
+    return _round_robin_take(grouped_items, limit=limit, key_field="url")
+
+
+def _search_topic_news(context: Dict[str, Any], *, limit: int) -> Tuple[List[Dict[str, Any]], str, List[Dict[str, Any]], List[str]]:
     query = _build_topic_search_query(context)
     tavily_api_key = _settings_value("TAVILY_API_KEY")
     bocha_api_key = _settings_value("BOCHA_WEB_SEARCH_API_KEY")
@@ -636,45 +685,42 @@ def _search_topic_news(context: Dict[str, Any], *, limit: int) -> Tuple[List[Dic
         raise RealSourceUnavailableError("user_topic real fetch unavailable: no search provider configured")
 
     failed_sources: List[Dict[str, Any]] = []
+    provider_results: List[Tuple[str, List[Dict[str, Any]]]] = []
+    applied_source_ids: List[str] = []
+
     for provider_name, loader in provider_attempts:
         try:
-            items = loader(query)
+            items = _dedupe_search_items(loader(query))[:limit]
         except Exception as exc:
             failed_sources.append(
                 {
                     "source_id": provider_name,
                     "source_name": provider_name,
                     "status": "error",
-                    "error": str(exc).strip() or "未知错误",
+                    "error": str(exc).strip() or "unknown error",
                 }
             )
             continue
 
-        deduplicated: List[Dict[str, Any]] = []
-        seen_urls = set()
-        for item in items:
-            url = str(item.get("url") or "").strip()
-            if not url or url in seen_urls:
-                continue
-            seen_urls.add(url)
-            deduplicated.append(item)
-            if len(deduplicated) >= limit:
-                break
+        if not items:
+            failed_sources.append(
+                {
+                    "source_id": provider_name,
+                    "source_name": provider_name,
+                    "status": "empty",
+                    "error": "search returned no results",
+                }
+            )
+            continue
 
-        if deduplicated:
-            return deduplicated, query, failed_sources
+        provider_results.append((provider_name, items))
+        applied_source_ids.append(provider_name)
 
-        failed_sources.append(
-            {
-                "source_id": provider_name,
-                "source_name": provider_name,
-                "status": "empty",
-                "error": "搜索结果为空",
-            }
-        )
+    merged_items = _merge_provider_search_results(provider_results, limit=limit)
+    if not merged_items:
+        raise RealSourceUnavailableError("user_topic real fetch returned no usable search results")
 
-    raise RealSourceUnavailableError("user_topic real fetch returned no usable search results")
-
+    return merged_items, query, failed_sources, applied_source_ids
 
 
 def _load_topic_driven_payload(payload: Dict[str, Any], input_options: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -687,13 +733,10 @@ def _load_topic_driven_payload(payload: Dict[str, Any], input_options: Dict[str,
         default=DEFAULT_TOPIC_DRIVEN_LIMIT,
     )
     collected_at = _utc_timestamp()
-    search_items, query, failed_sources = _search_topic_news(context, limit=candidate_limit)
+    search_items, query, failed_sources, applied_source_ids = _search_topic_news(context, limit=candidate_limit)
 
     topic_candidates: List[Dict[str, Any]] = []
-    provider = ""
-    applied_source_ids: List[str] = []
     for rank, item in enumerate(search_items, start=1):
-        provider = str(item.get("provider") or provider or DEFAULT_TOPIC_DRIVEN_PROVIDER).strip()
         candidate = _map_topic_search_item_to_candidate(
             item,
             context=context,
@@ -701,18 +744,15 @@ def _load_topic_driven_payload(payload: Dict[str, Any], input_options: Dict[str,
             query=query,
             collected_at=collected_at,
         )
-        if candidate is None:
-            continue
-        topic_candidates.append(candidate)
-        if provider and provider not in applied_source_ids:
-            applied_source_ids.append(provider)
+        if candidate is not None:
+            topic_candidates.append(candidate)
 
     if not topic_candidates:
         raise RealSourceUnavailableError("user_topic real fetch returned no usable topic candidates")
 
     resolved_context = {
         **context,
-        "provider": provider or DEFAULT_TOPIC_DRIVEN_PROVIDER,
+        "provider": applied_source_ids[0] if applied_source_ids else DEFAULT_TOPIC_DRIVEN_PROVIDER,
         "query": query,
         "requested_source_ids": ["topic_query"],
         "applied_source_ids": applied_source_ids,
@@ -729,9 +769,8 @@ def _load_topic_driven_payload(payload: Dict[str, Any], input_options: Dict[str,
     }, resolved_context
 
 
-
 def load_real_source_payload(payload: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """加载真实来源或主题驱动抓取结果，并转换为既有 ingest 可消费载荷。"""
+    """Load source-driven or topic-driven candidates into ingest-compatible payloads."""
 
     entry_options = payload.get("entry_options") if isinstance(payload.get("entry_options"), dict) else {}
     input_options = entry_options.get("input") if isinstance(entry_options.get("input"), dict) else {}
