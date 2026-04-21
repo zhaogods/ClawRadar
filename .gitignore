@@ -13,3 +13,4 @@ __pycache__/
 # Local rerun artifacts; keep checked-in stage10 baseline evidence files.
 project_protocol/stage10/demo_runs/*/20*-*/
 project_report/
+clawradar/publishers/wechat/.env

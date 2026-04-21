@@ -87,11 +87,11 @@ class ClawRadarWritingTestCase(unittest.TestCase):
             "html_content": "<html><body><h1>综合报告</h1><p>阶段八外部写作成功。</p></body></html>",
             "report_id": "report-stage8-001",
             "report_filepath": "/tmp/final_report.html",
-            "report_relative_path": "outputs/final_reports/final_report.html",
+            "report_relative_path": "outputs/reports/final_report.html",
             "ir_filepath": "/tmp/report_ir.json",
-            "ir_relative_path": "outputs/final_reports/ir/report_ir.json",
+            "ir_relative_path": "outputs/reports/ir/report_ir.json",
             "state_filepath": "/tmp/report_state.json",
-            "state_relative_path": "outputs/final_reports/report_state.json",
+            "state_relative_path": "outputs/reports/report_state.json",
         }
 
         class FakeAgent:
@@ -113,7 +113,7 @@ class ClawRadarWritingTestCase(unittest.TestCase):
         self.assertIn("writer_receipt", bundle)
         self.assertIn("report_artifacts", bundle)
         self.assertEqual(bundle["writer_receipt"]["report_id"], "report-stage8-001")
-        self.assertEqual(bundle["report_artifacts"]["state_relative_path"], "outputs/final_reports/report_state.json")
+        self.assertEqual(bundle["report_artifacts"]["state_relative_path"], "outputs/reports/report_state.json")
 
     def test_external_writer_fails_fast_when_connectivity_preflight_detects_unreachable_proxy(self):
         payload = self._load_fixture("clawradar_write_publish_ready_input.json")

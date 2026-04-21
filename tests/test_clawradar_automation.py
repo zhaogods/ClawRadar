@@ -1,6 +1,5 @@
 import importlib.util
 import json
-import tempfile
 import unittest
 from copy import deepcopy
 from pathlib import Path
@@ -20,6 +19,14 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
 
     def _load_fixture(self, filename):
         return json.loads((self.fixtures_dir / filename).read_text(encoding="utf-8"))
+
+
+    def _workspace_tmpdir(self, name):
+        workspace_tmp_root = Path(__file__).resolve().parents[1] / '.tmp' / 'test_runs'
+        workspace_tmp_root.mkdir(parents=True, exist_ok=True)
+        run_root = workspace_tmp_root / f"{name}{self.id().split('.')[-1]}"
+        run_root.mkdir(parents=True, exist_ok=True)
+        return run_root
 
     def _build_publish_ready_pipeline_payload(self):
         payload = self._load_fixture("clawradar_score_publish_ready_input.json")
@@ -169,7 +176,7 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         return Path(result["output_root"])
 
     def _archive_dir(self, result, event_id, delivery_time):
-        return self._run_output_root(result) / "events" / event_id / "deliver" / self._archive_slug(delivery_time)
+        return self._run_output_root(result) / "recovery" / event_id / "deliver" / self._archive_slug(delivery_time)
 
     def _build_deliver_only_replay_payload(self, orchestration_result):
         replay_payload = deepcopy(orchestration_result["stage_results"]["deliver"])
@@ -179,8 +186,8 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
     def test_manual_full_pipeline_runs_all_stages_and_backfills_statuses(self):
         payload = self._build_publish_ready_pipeline_payload()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = topic_radar_orchestrate(payload, runs_root=Path(tmpdir))
+        tmpdir = self._workspace_tmpdir("automation-")
+        result = topic_radar_orchestrate(payload, runs_root=Path(tmpdir))
 
         self.assertEqual(result["trigger_source"], OrchestratorTriggerSource.MANUAL.value)
         self.assertEqual(result["trigger_context"]["source"], OrchestratorTriggerSource.MANUAL.value)
@@ -201,11 +208,11 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             "html_content": "<html><body><h1>综合报告</h1><p>默认正式路径调用外部写作。</p></body></html>",
             "report_id": "report-defaults-001",
             "report_filepath": "/tmp/default_report.html",
-            "report_relative_path": "outputs/final_reports/default_report.html",
+            "report_relative_path": "outputs/reports/default_report.html",
             "ir_filepath": "/tmp/default_report_ir.json",
-            "ir_relative_path": "outputs/final_reports/ir/default_report_ir.json",
+            "ir_relative_path": "outputs/reports/ir/default_report_ir.json",
             "state_filepath": "/tmp/default_report_state.json",
-            "state_relative_path": "outputs/final_reports/default_report_state.json",
+            "state_relative_path": "outputs/reports/default_report_state.json",
         }
 
         class FakeAgent:
@@ -213,11 +220,11 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
                 self.kwargs = kwargs
                 return fake_result
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()):
-                result = topic_radar_orchestrate(payload, runs_root=Path(tmpdir))
-            self.assertTrue(self._run_output_root(result).exists())
-            self.assertTrue((self._run_output_root(result) / "meta" / "run_summary.json").exists())
+        tmpdir = self._workspace_tmpdir("automation-")
+        with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()):
+            result = topic_radar_orchestrate(payload, runs_root=Path(tmpdir))
+        self.assertTrue(self._run_output_root(result).exists())
+        self.assertTrue((self._run_output_root(result) / "summary.json").exists())
 
         self.assertEqual(result["run_status"], "completed")
         self.assertEqual(result["final_stage"], "deliver")
@@ -291,64 +298,95 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(real_source_payload["entry_options"]["write"]["executor"], "external_writer")
         self.assertEqual(real_source_payload["entry_options"]["delivery"]["target_mode"], "archive_only")
 
+    def test_formal_launcher_publish_only_routes_to_publish_existing_output(self):
+        module_path = Path(__file__).resolve().parents[1] / "run_openclaw_deliverable.py"
+        spec = importlib.util.spec_from_file_location("run_openclaw_deliverable", module_path)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        args = SimpleNamespace(
+            publish_only=True,
+            publish_file="outputs/sample/stages/write/content_bundles.json",
+            delivery_channel="wechat",
+            delivery_target="wechat://draft-box/openclaw-review",
+            target_event_id="evt-stage2-001",
+            force_republish=True,
+            runs_root="",
+        )
+
+        with patch.object(module, "_parse_args", return_value=args):
+            with patch.object(module, "publish_existing_output", return_value={"run_status": "completed"}) as mocked_publish:
+                with patch.object(module, "topic_radar_orchestrate", side_effect=AssertionError("should not orchestrate when publish_only is enabled")):
+                    with patch("builtins.print"):
+                        module.main()
+
+        mocked_kwargs = mocked_publish.call_args.kwargs
+        self.assertEqual(mocked_kwargs["publish_file"], Path("outputs/sample/stages/write/content_bundles.json"))
+        self.assertEqual(mocked_kwargs["delivery_channel"], "wechat")
+        self.assertEqual(mocked_kwargs["delivery_target"], "wechat://draft-box/openclaw-review")
+        self.assertEqual(mocked_kwargs["target_event_id"], "evt-stage2-001")
+        self.assertEqual(mocked_kwargs["force_republish"], True)
+
     def test_full_pipeline_persists_traceable_archive_and_audit_recovery_objects(self):
         payload = self._build_publish_ready_pipeline_payload()
         delivery_time = "2026-04-09T13:00:00Z"
         event_id = payload["topic_candidates"][0]["event_id"]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = topic_radar_orchestrate(
-                payload,
-                delivery_time=delivery_time,
-                runs_root=Path(tmpdir),
-            )
-            archive_dir = self._archive_dir(result, event_id, delivery_time)
+        tmpdir = self._workspace_tmpdir("automation-")
+        result = topic_radar_orchestrate(
+            payload,
+            delivery_time=delivery_time,
+            runs_root=Path(tmpdir),
+        )
+        archive_dir = self._archive_dir(result, event_id, delivery_time)
 
-            self.assertEqual([item["event_id"] for item in result["normalized_events"]], [event_id])
-            self.assertEqual([item["event_id"] for item in result["scored_events"]], [event_id])
-            self.assertEqual([item["event_id"] for item in result["content_bundles"]], [event_id])
-            self.assertEqual([item["event_id"] for item in result["delivery_receipt"]["events"]], [event_id])
-            self.assertEqual(result["artifact_summary"]["normalized_event_count"], 1)
-            self.assertEqual(result["artifact_summary"]["scored_event_count"], 1)
-            self.assertEqual(result["artifact_summary"]["content_bundle_count"], 1)
-            self.assertEqual(result["artifact_summary"]["delivered_count"], 1)
-            self.assertTrue(result["event_statuses"][0]["artifact_summary"]["has_content_bundle"])
-            self.assertEqual(result["event_statuses"][0]["artifact_summary"]["delivery_receipt_status"], "delivered")
+        self.assertEqual([item["event_id"] for item in result["normalized_events"]], [event_id])
+        self.assertEqual([item["event_id"] for item in result["scored_events"]], [event_id])
+        self.assertEqual([item["event_id"] for item in result["content_bundles"]], [event_id])
+        self.assertEqual([item["event_id"] for item in result["delivery_receipt"]["events"]], [event_id])
+        self.assertEqual(result["artifact_summary"]["normalized_event_count"], 1)
+        self.assertEqual(result["artifact_summary"]["scored_event_count"], 1)
+        self.assertEqual(result["artifact_summary"]["content_bundle_count"], 1)
+        self.assertEqual(result["artifact_summary"]["delivered_count"], 1)
+        self.assertTrue(result["event_statuses"][0]["artifact_summary"]["has_content_bundle"])
+        self.assertEqual(result["event_statuses"][0]["artifact_summary"]["delivery_receipt_status"], "delivered")
 
-            event_receipt = result["delivery_receipt"]["events"][0]
-            scorecard_path = Path(event_receipt["scorecard_path"])
-            payload_path = Path(event_receipt["payload_path"])
-            message_path = Path(event_receipt["message_path"])
-            self.assertEqual(Path(event_receipt["archive_path"]), archive_dir)
-            self.assertEqual(scorecard_path, archive_dir / "scorecard.json")
-            self.assertEqual(payload_path, archive_dir / "payload_snapshot.json")
-            self.assertEqual(message_path, archive_dir / "feishu_message.json")
-            self.assertTrue(scorecard_path.exists())
-            self.assertTrue(payload_path.exists())
-            self.assertTrue(message_path.exists())
+        event_receipt = result["delivery_receipt"]["events"][0]
+        scorecard_path = Path(event_receipt["scorecard_path"])
+        payload_path = Path(event_receipt["payload_path"])
+        message_path = Path(event_receipt["message_path"])
+        self.assertEqual(Path(event_receipt["archive_path"]), archive_dir)
+        self.assertEqual(scorecard_path, archive_dir / "scorecard.json")
+        self.assertEqual(payload_path, archive_dir / "payload_snapshot.json")
+        self.assertEqual(message_path, archive_dir / "feishu_message.json")
+        self.assertTrue(scorecard_path.exists())
+        self.assertTrue(payload_path.exists())
+        self.assertTrue(message_path.exists())
 
-            archived_scorecard = json.loads(scorecard_path.read_text(encoding="utf-8"))
-            archived_payload = json.loads(payload_path.read_text(encoding="utf-8"))
-            archived_message = json.loads(message_path.read_text(encoding="utf-8"))
-            self.assertEqual(archived_scorecard["event_id"], event_id)
-            self.assertEqual(archived_scorecard["scorecard"], result["scored_events"][0]["scorecard"])
-            self.assertEqual(archived_payload["scorecard_path"], event_receipt["scorecard_path"])
-            self.assertEqual(archived_payload["request_id"], result["request_id"])
-            self.assertEqual(archived_payload["event_id"], event_id)
-            self.assertEqual(archived_payload["delivery_request"]["delivery_target"], payload["delivery_target"])
-            self.assertEqual(archived_payload["scorecard"], result["scored_events"][0]["scorecard"])
-            self.assertEqual(
-                archived_payload["content_bundle"],
-                result["stage_results"]["deliver"]["content_bundle"],
-            )
-            self.assertEqual(archived_message["metadata"]["event_id"], event_id)
+        archived_scorecard = json.loads(scorecard_path.read_text(encoding="utf-8"))
+        archived_payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        archived_message = json.loads(message_path.read_text(encoding="utf-8"))
+        self.assertEqual(archived_scorecard["event_id"], event_id)
+        self.assertEqual(archived_scorecard["scorecard"], result["scored_events"][0]["scorecard"])
+        self.assertEqual(archived_payload["scorecard_path"], event_receipt["scorecard_path"])
+        self.assertEqual(archived_payload["request_id"], result["request_id"])
+        self.assertEqual(archived_payload["event_id"], event_id)
+        self.assertEqual(archived_payload["delivery_request"]["delivery_target"], payload["delivery_target"])
+        self.assertEqual(archived_payload["scorecard"], result["scored_events"][0]["scorecard"])
+        self.assertEqual(
+            archived_payload["content_bundle"],
+            result["stage_results"]["deliver"]["content_bundle"],
+        )
+        self.assertEqual(archived_message["metadata"]["event_id"], event_id)
 
-            self.assertEqual(result["stage_results"]["write"]["content_bundles"][0], result["content_bundles"][0])
-            self.assertEqual(
-                result["stage_results"]["deliver"]["content_bundle"],
-                archived_payload["content_bundle"],
-            )
-            self.assertEqual(result["stage_results"]["deliver"]["delivery_receipt"], result["delivery_receipt"])
+        self.assertEqual(result["stage_results"]["write"]["content_bundles"][0], result["content_bundles"][0])
+        self.assertEqual(
+            result["stage_results"]["deliver"]["content_bundle"],
+            archived_payload["content_bundle"],
+        )
+        self.assertEqual(result["stage_results"]["deliver"]["delivery_receipt"], result["delivery_receipt"])
 
     def test_archive_only_defaults_persist_traceable_archive_and_status(self):
         payload = self._load_fixture("clawradar_score_publish_ready_input.json")
@@ -358,11 +396,11 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             "html_content": "<html><body><h1>综合报告</h1><p>archive_only 默认路径保留可追溯留档。</p></body></html>",
             "report_id": "report-archive-default-001",
             "report_filepath": "/tmp/archive_default_report.html",
-            "report_relative_path": "outputs/final_reports/archive_default_report.html",
+            "report_relative_path": "outputs/reports/archive_default_report.html",
             "ir_filepath": "/tmp/archive_default_report_ir.json",
-            "ir_relative_path": "outputs/final_reports/ir/archive_default_report_ir.json",
+            "ir_relative_path": "outputs/reports/ir/archive_default_report_ir.json",
             "state_filepath": "/tmp/archive_default_report_state.json",
-            "state_relative_path": "outputs/final_reports/archive_default_report_state.json",
+            "state_relative_path": "outputs/reports/archive_default_report_state.json",
         }
 
         class FakeAgent:
@@ -370,121 +408,121 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
                 self.kwargs = kwargs
                 return fake_result
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()):
-                result = topic_radar_orchestrate(
-                    payload,
-                    delivery_time=delivery_time,
-                    runs_root=Path(tmpdir),
-                )
-            archive_dir = self._archive_dir(result, event_id, delivery_time)
-
-            self.assertEqual([item["event_id"] for item in result["normalized_events"]], [event_id])
-            self.assertEqual([item["event_id"] for item in result["scored_events"]], [event_id])
-            self.assertEqual([item["event_id"] for item in result["content_bundles"]], [event_id])
-            self.assertEqual([item["event_id"] for item in result["delivery_receipt"]["events"]], [event_id])
-            self.assertEqual(result["artifact_summary"]["normalized_event_count"], 1)
-            self.assertEqual(result["artifact_summary"]["scored_event_count"], 1)
-            self.assertEqual(result["artifact_summary"]["content_bundle_count"], 1)
-            self.assertEqual(result["artifact_summary"]["delivered_count"], 0)
-            self.assertTrue(result["event_statuses"][0]["artifact_summary"]["has_content_bundle"])
-            self.assertEqual(result["event_statuses"][0]["artifact_summary"]["delivery_receipt_status"], "archived")
-            self.assertEqual(result["event_statuses"][0]["deliver_status"], "archived")
-            self.assertEqual(result["content_bundles"][0]["writer_receipt"]["executor"], WriteExecutor.EXTERNAL_WRITER.value)
-            self.assertEqual(result["content_bundles"][0]["writer_receipt"]["report_id"], "report-archive-default-001")
-
-            event_receipt = result["delivery_receipt"]["events"][0]
-            scorecard_path = Path(event_receipt["scorecard_path"])
-            payload_path = Path(event_receipt["payload_path"])
-            message_path = Path(event_receipt["message_path"])
-            self.assertEqual(Path(event_receipt["archive_path"]), archive_dir)
-            self.assertEqual(scorecard_path, archive_dir / "scorecard.json")
-            self.assertEqual(payload_path, archive_dir / "payload_snapshot.json")
-            self.assertEqual(message_path, archive_dir / "feishu_message.json")
-            self.assertEqual(event_receipt["status"], "archived")
-            self.assertTrue(scorecard_path.exists())
-            self.assertTrue(payload_path.exists())
-            self.assertTrue(message_path.exists())
-
-            archived_scorecard = json.loads(scorecard_path.read_text(encoding="utf-8"))
-            archived_payload = json.loads(payload_path.read_text(encoding="utf-8"))
-            archived_message = json.loads(message_path.read_text(encoding="utf-8"))
-            self.assertEqual(archived_scorecard["event_id"], event_id)
-            self.assertEqual(archived_scorecard["scorecard"], result["scored_events"][0]["scorecard"])
-            self.assertEqual(archived_payload["scorecard_path"], event_receipt["scorecard_path"])
-            self.assertEqual(archived_payload["request_id"], result["request_id"])
-            self.assertEqual(archived_payload["event_id"], event_id)
-            self.assertEqual(archived_payload["delivery_request"]["delivery_channel"], "archive_only")
-            self.assertEqual(archived_payload["delivery_request"]["delivery_target"], "archive://clawradar")
-            self.assertEqual(archived_payload["scorecard"], result["scored_events"][0]["scorecard"])
-            self.assertEqual(
-                archived_payload["content_bundle"],
-                result["stage_results"]["deliver"]["content_bundle"],
+        tmpdir = self._workspace_tmpdir("automation-")
+        with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()):
+            result = topic_radar_orchestrate(
+                payload,
+                delivery_time=delivery_time,
+                runs_root=Path(tmpdir),
             )
-            self.assertEqual(archived_message["metadata"]["event_id"], event_id)
-            self.assertEqual(result["delivery_receipt"]["delivery_channel"], "archive_only")
-            self.assertEqual(result["delivery_receipt"]["delivery_target"], "archive://clawradar")
+        archive_dir = self._archive_dir(result, event_id, delivery_time)
 
-            self.assertEqual(result["stage_results"]["write"]["content_bundles"][0], result["content_bundles"][0])
-            self.assertEqual(
-                result["stage_results"]["deliver"]["content_bundle"],
-                archived_payload["content_bundle"],
-            )
-            self.assertEqual(result["stage_results"]["deliver"]["delivery_receipt"], result["delivery_receipt"])
+        self.assertEqual([item["event_id"] for item in result["normalized_events"]], [event_id])
+        self.assertEqual([item["event_id"] for item in result["scored_events"]], [event_id])
+        self.assertEqual([item["event_id"] for item in result["content_bundles"]], [event_id])
+        self.assertEqual([item["event_id"] for item in result["delivery_receipt"]["events"]], [event_id])
+        self.assertEqual(result["artifact_summary"]["normalized_event_count"], 1)
+        self.assertEqual(result["artifact_summary"]["scored_event_count"], 1)
+        self.assertEqual(result["artifact_summary"]["content_bundle_count"], 1)
+        self.assertEqual(result["artifact_summary"]["delivered_count"], 0)
+        self.assertTrue(result["event_statuses"][0]["artifact_summary"]["has_content_bundle"])
+        self.assertEqual(result["event_statuses"][0]["artifact_summary"]["delivery_receipt_status"], "archived")
+        self.assertEqual(result["event_statuses"][0]["deliver_status"], "archived")
+        self.assertEqual(result["content_bundles"][0]["writer_receipt"]["executor"], WriteExecutor.EXTERNAL_WRITER.value)
+        self.assertEqual(result["content_bundles"][0]["writer_receipt"]["report_id"], "report-archive-default-001")
+
+        event_receipt = result["delivery_receipt"]["events"][0]
+        scorecard_path = Path(event_receipt["scorecard_path"])
+        payload_path = Path(event_receipt["payload_path"])
+        message_path = Path(event_receipt["message_path"])
+        self.assertEqual(Path(event_receipt["archive_path"]), archive_dir)
+        self.assertEqual(scorecard_path, archive_dir / "scorecard.json")
+        self.assertEqual(payload_path, archive_dir / "payload_snapshot.json")
+        self.assertEqual(message_path, archive_dir / "feishu_message.json")
+        self.assertEqual(event_receipt["status"], "archived")
+        self.assertTrue(scorecard_path.exists())
+        self.assertTrue(payload_path.exists())
+        self.assertTrue(message_path.exists())
+
+        archived_scorecard = json.loads(scorecard_path.read_text(encoding="utf-8"))
+        archived_payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        archived_message = json.loads(message_path.read_text(encoding="utf-8"))
+        self.assertEqual(archived_scorecard["event_id"], event_id)
+        self.assertEqual(archived_scorecard["scorecard"], result["scored_events"][0]["scorecard"])
+        self.assertEqual(archived_payload["scorecard_path"], event_receipt["scorecard_path"])
+        self.assertEqual(archived_payload["request_id"], result["request_id"])
+        self.assertEqual(archived_payload["event_id"], event_id)
+        self.assertEqual(archived_payload["delivery_request"]["delivery_channel"], "archive_only")
+        self.assertEqual(archived_payload["delivery_request"]["delivery_target"], "archive://clawradar")
+        self.assertEqual(archived_payload["scorecard"], result["scored_events"][0]["scorecard"])
+        self.assertEqual(
+            archived_payload["content_bundle"],
+            result["stage_results"]["deliver"]["content_bundle"],
+        )
+        self.assertEqual(archived_message["metadata"]["event_id"], event_id)
+        self.assertEqual(result["delivery_receipt"]["delivery_channel"], "archive_only")
+        self.assertEqual(result["delivery_receipt"]["delivery_target"], "archive://clawradar")
+
+        self.assertEqual(result["stage_results"]["write"]["content_bundles"][0], result["content_bundles"][0])
+        self.assertEqual(
+            result["stage_results"]["deliver"]["content_bundle"],
+            archived_payload["content_bundle"],
+        )
+        self.assertEqual(result["stage_results"]["deliver"]["delivery_receipt"], result["delivery_receipt"])
 
     def test_deliver_only_replay_reuses_existing_artifacts_without_reexecuting_upstream_stages(self):
         payload = self._build_publish_ready_pipeline_payload()
         first_delivery_time = "2026-04-09T13:10:00Z"
         second_delivery_time = "2026-04-09T13:11:00Z"
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            first_result = topic_radar_orchestrate(
-                payload,
-                delivery_time=first_delivery_time,
-                runs_root=Path(tmpdir),
-            )
-            replay_payload = self._build_deliver_only_replay_payload(first_result)
-            replay_result = topic_radar_orchestrate(
-                replay_payload,
-                execution_mode="deliver_only",
-                delivery_time=second_delivery_time,
-                runs_root=Path(tmpdir),
-            )
+        tmpdir = self._workspace_tmpdir("automation-")
+        first_result = topic_radar_orchestrate(
+            payload,
+            delivery_time=first_delivery_time,
+            runs_root=Path(tmpdir),
+        )
+        replay_payload = self._build_deliver_only_replay_payload(first_result)
+        replay_result = topic_radar_orchestrate(
+            replay_payload,
+            execution_mode="deliver_only",
+            delivery_time=second_delivery_time,
+            runs_root=Path(tmpdir),
+        )
 
-            self.assertEqual(replay_result["run_status"], "completed")
-            self.assertEqual(replay_result["final_stage"], "deliver")
-            self.assertEqual(replay_result["stage_statuses"]["ingest"]["status"], "skipped")
-            self.assertEqual(replay_result["stage_statuses"]["score"]["status"], "skipped")
-            self.assertEqual(replay_result["stage_statuses"]["write"]["status"], "skipped")
-            self.assertEqual(replay_result["stage_statuses"]["deliver"]["status"], "succeeded")
-            self.assertIsNone(replay_result["stage_results"]["ingest"])
-            self.assertIsNone(replay_result["stage_results"]["score"])
-            self.assertIsNone(replay_result["stage_results"]["write"])
-            self.assertEqual(
-                replay_result["content_bundles"],
-                [first_result["stage_results"]["deliver"]["content_bundle"]],
-            )
-            self.assertEqual(replay_result["delivery_receipt"]["events"][0]["event_id"], first_result["processed_event_ids"][0])
-            self.assertEqual(
-                replay_result["stage_results"]["deliver"]["content_bundle"],
-                first_result["stage_results"]["deliver"]["content_bundle"],
-            )
-            self.assertEqual(
-                replay_result["stage_results"]["deliver"]["scorecard"],
-                first_result["stage_results"]["deliver"]["scorecard"],
-            )
+        self.assertEqual(replay_result["run_status"], "completed")
+        self.assertEqual(replay_result["final_stage"], "deliver")
+        self.assertEqual(replay_result["stage_statuses"]["ingest"]["status"], "skipped")
+        self.assertEqual(replay_result["stage_statuses"]["score"]["status"], "skipped")
+        self.assertEqual(replay_result["stage_statuses"]["write"]["status"], "skipped")
+        self.assertEqual(replay_result["stage_statuses"]["deliver"]["status"], "succeeded")
+        self.assertIsNone(replay_result["stage_results"]["ingest"])
+        self.assertIsNone(replay_result["stage_results"]["score"])
+        self.assertIsNone(replay_result["stage_results"]["write"])
+        self.assertEqual(
+            replay_result["content_bundles"],
+            [first_result["stage_results"]["deliver"]["content_bundle"]],
+        )
+        self.assertEqual(replay_result["delivery_receipt"]["events"][0]["event_id"], first_result["processed_event_ids"][0])
+        self.assertEqual(
+            replay_result["stage_results"]["deliver"]["content_bundle"],
+            first_result["stage_results"]["deliver"]["content_bundle"],
+        )
+        self.assertEqual(
+            replay_result["stage_results"]["deliver"]["scorecard"],
+            first_result["stage_results"]["deliver"]["scorecard"],
+        )
 
-            first_payload_path = Path(first_result["delivery_receipt"]["events"][0]["payload_path"])
-            replay_payload_path = Path(replay_result["delivery_receipt"]["events"][0]["payload_path"])
-            self.assertNotEqual(first_payload_path, replay_payload_path)
-            self.assertTrue(replay_payload_path.exists())
+        first_payload_path = Path(first_result["delivery_receipt"]["events"][0]["payload_path"])
+        replay_payload_path = Path(replay_result["delivery_receipt"]["events"][0]["payload_path"])
+        self.assertNotEqual(first_payload_path, replay_payload_path)
+        self.assertTrue(replay_payload_path.exists())
 
-            replay_snapshot = json.loads(replay_payload_path.read_text(encoding="utf-8"))
-            self.assertEqual(
-                replay_snapshot["content_bundle"],
-                first_result["stage_results"]["deliver"]["content_bundle"],
-            )
-            self.assertEqual(replay_snapshot["scorecard"], first_result["scored_events"][0]["scorecard"])
+        replay_snapshot = json.loads(replay_payload_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            replay_snapshot["content_bundle"],
+            first_result["stage_results"]["deliver"]["content_bundle"],
+        )
+        self.assertEqual(replay_snapshot["scorecard"], first_result["scored_events"][0]["scorecard"])
 
     def test_crawl_only_returns_crawl_artifact_and_skips_downstream(self):
         payload = self._build_publish_ready_pipeline_payload()
@@ -705,12 +743,12 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             },
         }
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = topic_radar_orchestrate(
-                resume_payload,
-                execution_mode="resume",
-                runs_root=Path(tmpdir),
-            )
+        tmpdir = self._workspace_tmpdir("automation-")
+        result = topic_radar_orchestrate(
+            resume_payload,
+            execution_mode="resume",
+            runs_root=Path(tmpdir),
+        )
 
         self.assertEqual(result["run_status"], "completed")
         self.assertEqual(result["final_stage"], "deliver")
@@ -756,12 +794,12 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             },
         }
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = topic_radar_orchestrate(
-                resume_payload,
-                execution_mode="resume",
-                runs_root=Path(tmpdir),
-            )
+        tmpdir = self._workspace_tmpdir("automation-")
+        result = topic_radar_orchestrate(
+            resume_payload,
+            execution_mode="resume",
+            runs_root=Path(tmpdir),
+        )
 
         self.assertEqual(result["run_status"], "completed")
         self.assertEqual(result["final_stage"], "deliver")
@@ -793,8 +831,8 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         original_payload = deepcopy(payload)
         payload["target_event_id"] = "evt-stage5-002"
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = topic_radar_orchestrate(payload, runs_root=Path(tmpdir))
+        tmpdir = self._workspace_tmpdir("automation-")
+        result = topic_radar_orchestrate(payload, runs_root=Path(tmpdir))
 
         self.assertEqual(result["trigger_source"], OrchestratorTriggerSource.SINGLE_EVENT_RERUN.value)
         self.assertTrue(result["trigger_context"]["is_single_event_rerun"])
@@ -883,8 +921,8 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         payload = self._build_publish_ready_pipeline_payload()
         payload["simulate_delivery_failure"] = True
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = topic_radar_orchestrate(payload, runs_root=Path(tmpdir))
+        tmpdir = self._workspace_tmpdir("automation-")
+        result = topic_radar_orchestrate(payload, runs_root=Path(tmpdir))
 
         self.assertEqual(result["run_status"], "delivery_failed")
         self.assertEqual(result["final_stage"], "deliver")
@@ -942,40 +980,40 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         delivery_time = "2026-04-09T13:30:00Z"
         event_id = payload["topic_candidates"][0]["event_id"]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("clawradar.orchestrator.topic_radar_deliver", side_effect=AssertionError("should not call topic_radar_deliver")):
-                result = topic_radar_orchestrate(
-                    payload,
-                    delivery_time=delivery_time,
-                    runs_root=Path(tmpdir),
-                )
+        tmpdir = self._workspace_tmpdir("automation-")
+        with patch("clawradar.orchestrator.topic_radar_deliver", side_effect=AssertionError("should not call topic_radar_deliver")):
+            result = topic_radar_orchestrate(
+                payload,
+                delivery_time=delivery_time,
+                runs_root=Path(tmpdir),
+            )
 
-            archive_dir = self._archive_dir(result, event_id, delivery_time)
-            event_receipt = result["delivery_receipt"]["events"][0]
+        archive_dir = self._archive_dir(result, event_id, delivery_time)
+        event_receipt = result["delivery_receipt"]["events"][0]
 
-            self.assertEqual(result["run_status"], "completed")
-            self.assertEqual(result["final_stage"], "deliver")
-            self.assertEqual(result["stage_statuses"]["deliver"]["status"], "succeeded")
-            self.assertEqual(result["entry_resolution"]["delivery"]["target_mode"], "archive_only")
-            self.assertEqual(result["delivery_receipt"]["delivery_channel"], "archive_only")
-            self.assertEqual(result["delivery_receipt"]["delivery_target"], "archive://openclaw-p0-tests")
-            self.assertEqual(result["delivery_receipt"]["archive_root"], (self._run_output_root(result) / "events").resolve().as_posix())
-            self.assertEqual(event_receipt["status"], "archived")
-            self.assertEqual(event_receipt["archive_path"], archive_dir.resolve().as_posix())
-            self.assertEqual(event_receipt["scorecard_path"], (archive_dir / "scorecard.json").resolve().as_posix())
-            self.assertEqual(event_receipt["payload_path"], (archive_dir / "payload_snapshot.json").resolve().as_posix())
-            self.assertEqual(event_receipt["message_path"], (archive_dir / "feishu_message.json").resolve().as_posix())
-            self.assertTrue((archive_dir / "scorecard.json").exists())
-            self.assertTrue((archive_dir / "payload_snapshot.json").exists())
-            self.assertTrue((archive_dir / "feishu_message.json").exists())
+        self.assertEqual(result["run_status"], "completed")
+        self.assertEqual(result["final_stage"], "deliver")
+        self.assertEqual(result["stage_statuses"]["deliver"]["status"], "succeeded")
+        self.assertEqual(result["entry_resolution"]["delivery"]["target_mode"], "archive_only")
+        self.assertEqual(result["delivery_receipt"]["delivery_channel"], "archive_only")
+        self.assertEqual(result["delivery_receipt"]["delivery_target"], "archive://openclaw-p0-tests")
+        self.assertEqual(result["delivery_receipt"]["archive_root"], (self._run_output_root(result) / "recovery").resolve().as_posix())
+        self.assertEqual(event_receipt["status"], "archived")
+        self.assertTrue(event_receipt["archive_path"].endswith(f"{event_id}/deliver/{self._archive_slug(delivery_time)}"))
+        self.assertTrue(event_receipt["scorecard_path"].endswith(f"{event_id}/deliver/{self._archive_slug(delivery_time)}/scorecard.json"))
+        self.assertTrue(event_receipt["payload_path"].endswith(f"{event_id}/deliver/{self._archive_slug(delivery_time)}/payload_snapshot.json"))
+        self.assertTrue(event_receipt["message_path"].endswith(f"{event_id}/deliver/{self._archive_slug(delivery_time)}/feishu_message.json"))
+        self.assertTrue(Path(event_receipt["scorecard_path"]).exists())
+        self.assertTrue(Path(event_receipt["payload_path"]).exists())
+        self.assertTrue(Path(event_receipt["message_path"]).exists())
 
-            archived_scorecard = json.loads((archive_dir / "scorecard.json").read_text(encoding="utf-8"))
-            archived_payload = json.loads((archive_dir / "payload_snapshot.json").read_text(encoding="utf-8"))
-            self.assertEqual(archived_scorecard["event_id"], event_id)
-            self.assertEqual(archived_payload["scorecard_path"], event_receipt["scorecard_path"])
-            self.assertEqual(archived_payload["delivery_request"]["delivery_channel"], "archive_only")
-            self.assertEqual(archived_payload["delivery_request"]["delivery_target"], "archive://openclaw-p0-tests")
-            self.assertEqual(archived_payload["delivery_request"]["delivery_time"], delivery_time)
+        archived_scorecard = json.loads(Path(event_receipt["scorecard_path"]).read_text(encoding="utf-8"))
+        archived_payload = json.loads(Path(event_receipt["payload_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(archived_scorecard["event_id"], event_id)
+        self.assertEqual(archived_payload["scorecard_path"], event_receipt["scorecard_path"])
+        self.assertEqual(archived_payload["delivery_request"]["delivery_channel"], "archive_only")
+        self.assertEqual(archived_payload["delivery_request"]["delivery_target"], "archive://openclaw-p0-tests")
+        self.assertEqual(archived_payload["delivery_request"]["delivery_time"], delivery_time)
 
     def test_entry_options_real_source_success_enters_existing_chain(self):
         payload = self._build_publish_ready_pipeline_payload()
@@ -1060,11 +1098,11 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             "html_content": "<html><body><h1>综合报告</h1><p>阶段八外部写作成功。</p></body></html>",
             "report_id": "report-stage8-001",
             "report_filepath": "/tmp/final_report.html",
-            "report_relative_path": "outputs/final_reports/final_report.html",
+            "report_relative_path": "outputs/reports/final_report.html",
             "ir_filepath": "/tmp/report_ir.json",
-            "ir_relative_path": "outputs/final_reports/ir/report_ir.json",
+            "ir_relative_path": "outputs/reports/ir/report_ir.json",
             "state_filepath": "/tmp/report_state.json",
-            "state_relative_path": "outputs/final_reports/report_state.json",
+            "state_relative_path": "outputs/reports/report_state.json",
         }
 
         class FakeAgent:
@@ -1085,7 +1123,7 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(result["content_bundles"][0]["writer_receipt"]["report_id"], "report-stage8-001")
         self.assertEqual(
             result["content_bundles"][0]["report_artifacts"]["state_relative_path"],
-            "outputs/final_reports/report_state.json",
+            "outputs/reports/report_state.json",
         )
 
     def test_entry_options_external_writer_falls_back_to_builtin(self):
@@ -1149,42 +1187,134 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         delivery_time = "2026-04-09T13:35:00Z"
         event_id = payload["topic_candidates"][0]["event_id"]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("clawradar.orchestrator.topic_radar_deliver", side_effect=AssertionError("should fallback before topic_radar_deliver")):
-                result = topic_radar_orchestrate(
-                    payload,
-                    delivery_time=delivery_time,
-                    runs_root=Path(tmpdir),
-                )
+        tmpdir = self._workspace_tmpdir("automation-")
+        with patch("clawradar.orchestrator.topic_radar_deliver", side_effect=AssertionError("should fallback before topic_radar_deliver")):
+            result = topic_radar_orchestrate(
+                payload,
+                delivery_time=delivery_time,
+                runs_root=Path(tmpdir),
+            )
 
-            archive_dir = self._archive_dir(result, event_id, delivery_time)
-            event_receipt = result["delivery_receipt"]["events"][0]
+        archive_dir = self._archive_dir(result, event_id, delivery_time)
+        event_receipt = result["delivery_receipt"]["events"][0]
 
-            self.assertEqual(result["run_status"], "completed")
-            self.assertEqual(result["final_stage"], "deliver")
-            self.assertEqual(result["entry_resolution"]["delivery"]["target_mode"], "archive_only")
-            self.assertEqual(result["entry_resolution"]["delivery"]["channel"], "archive_only")
-            self.assertTrue(result["entry_resolution"]["degrade"]["fallback_triggered"])
-            self.assertEqual(result["entry_resolution"]["degrade"]["fallbacks"][0]["category"], "delivery")
-            self.assertEqual(result["delivery_receipt"]["delivery_channel"], "archive_only")
-            self.assertEqual(result["delivery_receipt"]["delivery_target"], "webhook://openclaw/p0-review")
-            self.assertEqual(event_receipt["status"], "archived")
-            self.assertEqual(event_receipt["archive_path"], archive_dir.resolve().as_posix())
-            self.assertEqual(event_receipt["scorecard_path"], (archive_dir / "scorecard.json").resolve().as_posix())
-            self.assertEqual(event_receipt["payload_path"], (archive_dir / "payload_snapshot.json").resolve().as_posix())
-            self.assertEqual(event_receipt["message_path"], (archive_dir / "feishu_message.json").resolve().as_posix())
-            self.assertTrue((archive_dir / "scorecard.json").exists())
-            self.assertTrue((archive_dir / "payload_snapshot.json").exists())
-            self.assertTrue((archive_dir / "feishu_message.json").exists())
+        self.assertEqual(result["run_status"], "completed")
+        self.assertEqual(result["final_stage"], "deliver")
+        self.assertEqual(result["entry_resolution"]["delivery"]["target_mode"], "archive_only")
+        self.assertEqual(result["entry_resolution"]["delivery"]["channel"], "archive_only")
+        self.assertTrue(result["entry_resolution"]["degrade"]["fallback_triggered"])
+        self.assertEqual(result["entry_resolution"]["degrade"]["fallbacks"][0]["category"], "delivery")
+        self.assertEqual(result["delivery_receipt"]["delivery_channel"], "archive_only")
+        self.assertEqual(result["delivery_receipt"]["delivery_target"], "webhook://openclaw/p0-review")
+        self.assertEqual(event_receipt["status"], "archived")
+        self.assertTrue(event_receipt["archive_path"].endswith(f"{event_id}/deliver/{self._archive_slug(delivery_time)}"))
+        self.assertTrue(event_receipt["scorecard_path"].endswith(f"{event_id}/deliver/{self._archive_slug(delivery_time)}/scorecard.json"))
+        self.assertTrue(event_receipt["payload_path"].endswith(f"{event_id}/deliver/{self._archive_slug(delivery_time)}/payload_snapshot.json"))
+        self.assertTrue(event_receipt["message_path"].endswith(f"{event_id}/deliver/{self._archive_slug(delivery_time)}/feishu_message.json"))
+        self.assertTrue(Path(event_receipt["scorecard_path"]).exists())
+        self.assertTrue(Path(event_receipt["payload_path"]).exists())
+        self.assertTrue(Path(event_receipt["message_path"]).exists())
 
-            archived_scorecard = json.loads((archive_dir / "scorecard.json").read_text(encoding="utf-8"))
-            archived_payload = json.loads((archive_dir / "payload_snapshot.json").read_text(encoding="utf-8"))
-            self.assertEqual(archived_scorecard["event_id"], event_id)
-            self.assertEqual(archived_payload["scorecard_path"], event_receipt["scorecard_path"])
-            self.assertEqual(archived_payload["delivery_request"]["delivery_channel"], "archive_only")
-            self.assertEqual(archived_payload["delivery_request"]["delivery_target"], "webhook://openclaw/p0-review")
-            self.assertEqual(archived_payload["delivery_request"]["delivery_time"], delivery_time)
+        archived_scorecard = json.loads(Path(event_receipt["scorecard_path"]).read_text(encoding="utf-8"))
+        archived_payload = json.loads(Path(event_receipt["payload_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(archived_scorecard["event_id"], event_id)
+        self.assertEqual(archived_payload["scorecard_path"], event_receipt["scorecard_path"])
+        self.assertEqual(archived_payload["delivery_request"]["delivery_channel"], "archive_only")
+        self.assertEqual(archived_payload["delivery_request"]["delivery_target"], "webhook://openclaw/p0-review")
+        self.assertEqual(archived_payload["delivery_request"]["delivery_time"], delivery_time)
 
+    def test_entry_options_wechat_reaches_delivery_stage(self):
+        payload = self._build_publish_ready_pipeline_payload()
+        payload["entry_options"] = {
+            "write": {"executor": "openclaw_builtin"},
+            "delivery": {
+                "target_mode": "wechat",
+                "target": "wechat://draft-box/openclaw-review",
+            },
+        }
+
+        fake_deliver_result = {
+            "request_id": payload["request_id"],
+            "trigger_source": payload["trigger_source"],
+            "event_id": payload["topic_candidates"][0]["event_id"],
+            "run_status": "completed",
+            "decision_status": "publish_ready",
+            "normalized_events": [],
+            "timeline": [],
+            "evidence_pack": {},
+            "scorecard": {},
+            "content_bundle": {},
+            "delivery_receipt": {
+                "delivery_time": "2026-04-09T13:40:00Z",
+                "delivery_channel": "wechat",
+                "delivery_target": "wechat://draft-box/openclaw-review",
+                "archive_root": ".tmp/test_runs",
+                "failed_count": 0,
+                "events": [
+                    {
+                        "request_id": payload["request_id"],
+                        "event_id": payload["topic_candidates"][0]["event_id"],
+                        "decision_status": "publish_ready",
+                        "delivery_time": "2026-04-09T13:40:00Z",
+                        "delivery_channel": "wechat",
+                        "delivery_target": "wechat://draft-box/openclaw-review",
+                        "archive_path": "archive-path",
+                        "scorecard_path": "scorecard-path",
+                        "payload_path": "payload-path",
+                        "message_path": "wechat_delivery_message.json",
+                        "status": "delivered",
+                        "failure_info": None,
+                    }
+                ],
+            },
+            "errors": [],
+        }
+
+        with patch("clawradar.orchestrator.topic_radar_deliver", return_value=fake_deliver_result) as mocked_deliver:
+            result = topic_radar_orchestrate(payload, delivery_time="2026-04-09T13:40:00Z")
+
+        self.assertEqual(result["run_status"], "completed")
+        self.assertEqual(result["final_stage"], "deliver")
+        self.assertEqual(result["entry_resolution"]["delivery"]["target_mode"], "wechat")
+        self.assertEqual(result["entry_resolution"]["delivery"]["channel"], "wechat")
+        self.assertEqual(result["delivery_receipt"]["delivery_channel"], "wechat")
+
+        mocked_args, mocked_kwargs = mocked_deliver.call_args
+        delivered_payload = mocked_args[0]
+        self.assertEqual(delivered_payload["delivery_channel"], "wechat")
+        self.assertEqual(delivered_payload["delivery_target"], "wechat://draft-box/openclaw-review")
+        self.assertEqual(mocked_kwargs["channel"], "wechat")
+        self.assertEqual(mocked_kwargs["target"], "wechat://draft-box/openclaw-review")
+
+
+    def test_missing_delivery_channel_defaults_to_archive_only_without_external_delivery(self):
+        payload = self._load_fixture("clawradar_score_publish_ready_input.json")
+        fake_result = {
+            "html_content": "<html><body><h1>default local archive</h1><p>delivery channel absent.</p></body></html>",
+            "report_id": "report-default-local-001",
+            "report_filepath": "/tmp/default_local_report.html",
+            "report_relative_path": "outputs/reports/default_local_report.html",
+            "ir_filepath": "/tmp/default_local_report_ir.json",
+            "ir_relative_path": "outputs/reports/ir/default_local_report_ir.json",
+            "state_filepath": "/tmp/default_local_report_state.json",
+            "state_relative_path": "outputs/reports/default_local_report_state.json",
+        }
+
+        class FakeAgent:
+            def generate_report(self, **kwargs):
+                self.kwargs = kwargs
+                return fake_result
+
+        tmpdir = self._workspace_tmpdir("automation-default-local-")
+        with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()):
+            with patch("clawradar.orchestrator.topic_radar_deliver", side_effect=AssertionError("should remain local when delivery channel is absent")):
+                result = topic_radar_orchestrate(payload, runs_root=Path(tmpdir))
+
+        self.assertEqual(result["entry_resolution"]["delivery"]["target_mode"], "archive_only")
+        self.assertEqual(result["entry_resolution"]["delivery"]["channel"], "archive_only")
+        self.assertEqual(result["delivery_receipt"]["delivery_channel"], "archive_only")
+        self.assertEqual(result["delivery_receipt"]["delivery_target"], "archive://clawradar")
+        self.assertEqual(result["delivery_receipt"]["events"][0]["status"], "archived")
 
 if __name__ == "__main__":
     unittest.main()

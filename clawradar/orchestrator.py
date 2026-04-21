@@ -94,7 +94,7 @@ _VALID_TRIGGER_SOURCES = {item.value for item in OrchestratorTriggerSource}
 
 _ENTRY_INPUT_MODES = {"inline_candidates", "inline_normalized", "inline_topic_cards", "real_source", "user_topic"}
 _ENTRY_WRITE_EXECUTORS = {"openclaw_builtin", "external_writer"}
-_ENTRY_DELIVERY_TARGET_MODES = {"feishu", "archive_only"}
+_ENTRY_DELIVERY_TARGET_MODES = {"feishu", "wechat", "wechat_official_account", "archive_only"}
 _ENTRY_INPUT_DEGRADE_STRATEGIES = {"fail", "fallback_inline_candidates", "fallback_inline_normalized"}
 _ENTRY_WRITE_DEGRADE_STRATEGIES = {"fail", "fallback_openclaw_builtin", "skip"}
 _ENTRY_DELIVERY_DEGRADE_STRATEGIES = {"fail", "archive_only"}
@@ -349,11 +349,14 @@ def _build_entry_resolution(
         elif "channel" in delivery_options:
             resolved_delivery_channel = str(delivery_options.get("channel") or "").strip()
             delivery_channel_source = "entry_options"
+        elif delivery_target_mode != "archive_only":
+            resolved_delivery_channel = "wechat" if delivery_target_mode == "wechat_official_account" else delivery_target_mode
+            delivery_channel_source = "entry_options"
         elif "delivery_channel" in payload:
             resolved_delivery_channel = str(payload.get("delivery_channel") or "").strip()
             delivery_channel_source = "legacy_payload"
         else:
-            resolved_delivery_channel = "feishu"
+            resolved_delivery_channel = "wechat" if delivery_target_mode == "wechat_official_account" else delivery_target_mode
             delivery_channel_source = "default"
 
         if delivery_target is not None:
@@ -696,6 +699,8 @@ def _build_delivery_payload(
         delivery_payload["delivery_time"] = payload.get("delivery_time")
     if isinstance(payload.get("output_context"), dict):
         delivery_payload["output_context"] = deepcopy(payload["output_context"])
+    if isinstance(payload.get("entry_options"), dict):
+        delivery_payload["entry_options"] = deepcopy(payload["entry_options"])
     return delivery_payload
 
 
@@ -1569,7 +1574,7 @@ def topic_radar_orchestrate(
                 entry_resolution=entry_resolution,
             )
 
-        if resolved_delivery_channel and resolved_delivery_channel != "feishu":
+        if resolved_delivery_channel and resolved_delivery_channel not in {"feishu", "wechat", "wechat_official_account"}:
             if entry_resolution["degrade"]["strategies"]["delivery_unavailable"] == "archive_only":
                 _record_entry_fallback(
                     entry_resolution,
@@ -2311,7 +2316,7 @@ def topic_radar_orchestrate(
             entry_resolution=entry_resolution,
         )
 
-    if resolved_delivery_channel and resolved_delivery_channel != "feishu":
+    if resolved_delivery_channel and resolved_delivery_channel not in {"feishu", "wechat", "wechat_official_account"}:
         if entry_resolution["degrade"]["strategies"]["delivery_unavailable"] == "archive_only":
             _record_entry_fallback(
                 entry_resolution,

@@ -9,6 +9,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from .publishers.wechat.service import (
+    WeChatOfficialAccountPublishError,
+    build_wechat_delivery_message,
+)
 from .scoring import ScoreDecisionStatus
 
 
@@ -25,6 +29,8 @@ class DeliveryChannel(str, Enum):
     """阶段四交付渠道。"""
 
     FEISHU = "feishu"
+    WECHAT = "wechat"
+    WECHAT_OFFICIAL_ACCOUNT = "wechat_official_account"
 
 
 class DeliveryErrorCode(str, Enum):
@@ -343,16 +349,18 @@ def validate_delivery_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         normalized_payload["delivery_time"] = payload.get("delivery_time")
     if isinstance(payload.get("output_context"), dict):
         normalized_payload["output_context"] = deepcopy(payload["output_context"])
+    _copy_delivery_passthrough_fields(payload, normalized_payload)
     return normalized_payload
 
 
 def _resolve_delivery_channel(payload: Dict[str, Any], channel: Optional[str]) -> str:
     resolved = str(channel or payload.get("delivery_channel") or DeliveryChannel.FEISHU.value).strip().lower()
-    if resolved != DeliveryChannel.FEISHU.value:
+    allowed = {DeliveryChannel.FEISHU.value, DeliveryChannel.WECHAT.value, DeliveryChannel.WECHAT_OFFICIAL_ACCOUNT.value}
+    if resolved not in allowed:
         raise DeliveryValidationError(
             code=DeliveryErrorCode.UNSUPPORTED_CHANNEL,
             missing_fields=[],
-            message="deliver currently supports feishu only",
+            message="deliver currently supports feishu and wechat only",
         )
     return resolved
 
@@ -388,6 +396,58 @@ def _relative_path(path: Optional[Path]) -> Optional[str]:
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _sanitize_delivery_entry_options(entry_options: Dict[str, Any]) -> Dict[str, Any]:
+    sanitized = deepcopy(entry_options)
+    delivery_options = sanitized.get("delivery") if isinstance(sanitized.get("delivery"), dict) else None
+    if delivery_options is None:
+        return sanitized
+
+    wechat_options = delivery_options.get("wechat") if isinstance(delivery_options.get("wechat"), dict) else None
+    if wechat_options is not None:
+        for field in (
+            "appid",
+            "app_id",
+            "secret",
+            "app_secret",
+            "WECHAT_APPID",
+            "WECHAT_APP_ID",
+            "WECHAT_SECRET",
+            "WECHAT_APP_SECRET",
+        ):
+            wechat_options.pop(field, None)
+    return sanitized
+
+
+def _sanitize_delivery_options(delivery_options: Dict[str, Any]) -> Dict[str, Any]:
+    sanitized = deepcopy(delivery_options)
+    for field in (
+        "appid",
+        "app_id",
+        "secret",
+        "app_secret",
+        "WECHAT_APPID",
+        "WECHAT_APP_ID",
+        "WECHAT_SECRET",
+        "WECHAT_APP_SECRET",
+    ):
+        sanitized.pop(field, None)
+    return sanitized
+
+
+def _copy_delivery_passthrough_fields(source: Dict[str, Any], target: Dict[str, Any]) -> None:
+    for field in (
+        "delivery_channel",
+        "delivery_target",
+        "delivery_time",
+    ):
+        if field in source and source.get(field) is not None:
+            target[field] = deepcopy(source.get(field))
+    if isinstance(source.get("entry_options"), dict):
+        target["entry_options"] = _sanitize_delivery_entry_options(source["entry_options"])
+    if isinstance(source.get("delivery_options"), dict):
+        target["delivery_options"] = _sanitize_delivery_options(source["delivery_options"])
 
 
 def build_feishu_delivery_message(payload: Dict[str, Any], content_bundle: Dict[str, Any], *, delivery_target: str) -> Dict[str, Any]:
@@ -432,6 +492,27 @@ def build_feishu_delivery_message(payload: Dict[str, Any], content_bundle: Dict[
     }
 
 
+def _message_filename_for_channel(delivery_channel: str) -> str:
+    if delivery_channel in {DeliveryChannel.WECHAT.value, DeliveryChannel.WECHAT_OFFICIAL_ACCOUNT.value}:
+        return "wechat_delivery_message.json"
+    return "feishu_message.json"
+
+
+def _build_delivery_message(payload: Dict[str, Any], content_bundle: Dict[str, Any], *, delivery_channel: str, delivery_target: str) -> Dict[str, Any]:
+    if delivery_channel in {DeliveryChannel.WECHAT.value, DeliveryChannel.WECHAT_OFFICIAL_ACCOUNT.value}:
+        return build_wechat_delivery_message(payload, content_bundle, delivery_target=delivery_target)
+    return build_feishu_delivery_message(payload, content_bundle, delivery_target=delivery_target)
+
+
+
+def _archive_root_from_output_context(output_context: Dict[str, Any]) -> Optional[str]:
+    archive_root = output_context.get("recovery_root") or output_context.get("events_root")
+    if archive_root is None:
+        return None
+    return str(archive_root)
+
+
+
 def _archive_delivery_workspace(
     payload: Dict[str, Any],
     event_payload: Dict[str, Any],
@@ -443,9 +524,9 @@ def _archive_delivery_workspace(
 ) -> Dict[str, Optional[str]]:
     event_id = str(event_payload.get("event_id") or "unknown-event").strip() or "unknown-event"
     output_context = payload.get("output_context") if isinstance(payload.get("output_context"), dict) else {}
-    events_root = output_context.get("events_root")
-    if events_root:
-        archive_dir = Path(events_root) / event_id / "deliver" / _slugify_timestamp(delivery_time)
+    archive_root = _archive_root_from_output_context(output_context)
+    if archive_root:
+        archive_dir = Path(archive_root) / event_id / "deliver" / _slugify_timestamp(delivery_time)
     else:
         archive_dir = runs_root / str(payload["request_id"]).strip() / event_id / "deliver" / _slugify_timestamp(delivery_time)
     archive_dir.mkdir(parents=True, exist_ok=True)
@@ -476,11 +557,17 @@ def _archive_delivery_workspace(
         },
         "scorecard_path": _relative_path(scorecard_path),
     }
+    _copy_delivery_passthrough_fields(payload, payload_snapshot)
     payload_path = archive_dir / "payload_snapshot.json"
     _write_json(payload_path, payload_snapshot)
 
-    message_payload = build_feishu_delivery_message(payload_snapshot, payload_snapshot["content_bundle"], delivery_target=delivery_target)
-    message_path = archive_dir / "feishu_message.json"
+    message_payload = _build_delivery_message(
+        payload_snapshot,
+        payload_snapshot["content_bundle"],
+        delivery_channel=delivery_channel,
+        delivery_target=delivery_target,
+    )
+    message_path = archive_dir / _message_filename_for_channel(delivery_channel)
     _write_json(message_path, message_payload)
 
     return {
@@ -589,7 +676,7 @@ def build_archive_only_delivery_result(
             "delivery_time": resolved_delivery_time,
             "delivery_channel": "archive_only",
             "delivery_target": resolved_delivery_target,
-            "archive_root": str(output_context.get("events_root") or _relative_path(resolved_runs_root)),
+            "archive_root": str(_archive_root_from_output_context(output_context) or _relative_path(resolved_runs_root)),
             "failed_count": sum(1 for item in event_receipts if item["status"] == "failed"),
             "events": event_receipts,
         },
@@ -602,7 +689,8 @@ def _simulate_delivery(payload: Dict[str, Any], *, delivery_channel: str, delive
     del delivery_target
     if payload.get("simulate_delivery_failure"):
         raise RuntimeError("simulated delivery channel unavailable")
-    if delivery_channel != DeliveryChannel.FEISHU.value:
+    allowed = {DeliveryChannel.FEISHU.value, DeliveryChannel.WECHAT.value, DeliveryChannel.WECHAT_OFFICIAL_ACCOUNT.value}
+    if delivery_channel not in allowed:
         raise RuntimeError("unsupported delivery channel")
 
 
@@ -691,6 +779,7 @@ def topic_radar_deliver(
         )
 
     resolved_channel = str(channel or normalized_payload.get("delivery_channel") or DeliveryChannel.FEISHU.value).strip().lower()
+    output_context = normalized_payload.get("output_context") if isinstance(normalized_payload.get("output_context"), dict) else {}
     resolved_delivery_time = _resolve_delivery_time(normalized_payload, delivery_time)
     resolved_runs_root = Path(runs_root or DEFAULT_RUNS_ROOT)
     resolved_runs_root.mkdir(parents=True, exist_ok=True)
@@ -764,7 +853,7 @@ def topic_radar_deliver(
                 }
             )
             continue
-        except RuntimeError as exc:
+        except (RuntimeError, WeChatOfficialAccountPublishError) as exc:
             event_receipts.append(
                 _build_event_failure_receipt(
                     event_payload=event_payload,
@@ -818,7 +907,7 @@ def topic_radar_deliver(
             "delivery_time": resolved_delivery_time,
             "delivery_channel": resolved_channel,
             "delivery_target": normalized_payload.get("delivery_target"),
-            "archive_root": _relative_path(resolved_runs_root),
+            "archive_root": str(_archive_root_from_output_context(output_context) or _relative_path(resolved_runs_root)),
             "failed_count": sum(1 for item in event_receipts if item["status"] == "failed"),
             "events": event_receipts,
         },
@@ -873,7 +962,7 @@ def build_delivery_rejection(
             "delivery_time": resolved_delivery_time,
             "delivery_channel": resolved_delivery_channel,
             "delivery_target": payload.get("delivery_target"),
-            "archive_root": str(output_context.get("events_root") or _relative_path(DEFAULT_RUNS_ROOT)),
+            "archive_root": str(_archive_root_from_output_context(output_context) or _relative_path(DEFAULT_RUNS_ROOT)),
             "failed_count": 1,
             "events": [
                 _build_event_failure_receipt(

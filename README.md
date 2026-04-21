@@ -1,4 +1,4 @@
-﻿# ClawRadar
+# ClawRadar
 
 面向真实来源热点发现、结构化评分、内容生成与归档交付的开源舆情流水线。
 
@@ -38,7 +38,7 @@ from clawradar.orchestrator import topic_radar_orchestrate
 - 结构化评分：生成时间线、事实点、风险标记、维度分和最终决策
 - 写作阶段：支持内置写作，也支持委托 `ReportEngine` 作为外部 writer
 - 交付阶段：支持飞书消息格式和本地归档快照
-- 编排与产物管理：每次运行都会生成 `meta/`、`stages/`、`events/` 等输出目录
+- 编排与产物管理：每次运行都会生成 `summary.json`、`reports/`、`recovery/`、`debug/` 等输出产物
 
 ## 仓库结构
 
@@ -177,12 +177,92 @@ python scripts/run_real_source_demo.py
 
 ## 输出结果
 
-一次运行通常会在 `outputs/<request_id>/<run_slug>/` 下生成结果。典型目录包括：
+当前版本的单次运行输出目录统一为 `outputs/<mode>/<run_id>/`。
 
-- `meta/`：`run_summary.json`、`entry_resolution.json`、`artifact_summary.json`、`errors.json`
-- `stages/`：各阶段的中间结果快照
-- `events/`：按事件维度归档的评分卡、payload 快照、交付产物
-- `reports/`：最终报告、IR、中间章节和日志
+- `mode`：输入模式，例如 `real_source`、`user_topic`
+- `run_id`：本次运行标识，格式为 `YYYYMMDD_HHMM`，例如 `20260420_0332`
+
+典型目录结构如下：
+
+```text
+outputs/
+└─ <mode>/
+   ├─ latest.json                 # 当前 mode 最近一次运行指针
+   └─ <run_id>/
+      ├─ summary.json             # 单次运行总览摘要
+      ├─ reports/                 # 最终报告产物
+      ├─ recovery/                # 按事件归档的交付/恢复快照
+      └─ debug/                   # 调试与阶段中间产物
+```
+
+各目录含义：
+
+- `summary.json`：该次运行的总览结果，包含 `run_status`、`final_stage`、`decision_status`、`run_summary`、`delivery_receipt`、`output_manifest` 等核心字段。
+- `reports/`：面向人阅读的最终产物，通常包括 HTML 报告、报告状态文件等。
+- `recovery/`：按 `event_id` 归档的恢复与交付快照，通常包含 `scorecard.json`、`payload_snapshot.json`、`feishu_message.json` 等事件级留痕文件。
+- `debug/`：供排查问题和审计链路使用的中间产物，通常包含 `input.json`、`entry_resolution.json`、`stage_statuses.json`、`crawl.json`、`topics.json`、`ingest.json`、`score.json`、`write.json`、`deliver.json` 等。
+- `latest.json`：位于 `outputs/<mode>/latest.json`，用来指向该输入模式最近一次运行的 `run_id`、`output_root` 和摘要信息，便于外部系统快速定位最新结果。
+
+补充说明：
+
+- `request_id` 仍然保留在 `summary.json`、`delivery_receipt`、事件归档文件和业务 payload 中，用于业务追踪与幂等关联。
+- `request_id` 不再作为输出目录名使用，避免同一请求多次重跑时产生目录语义混乱。
+
+## 版本迭代
+
+输出目录规范已经历一次明确收敛，当前可按 V1 和 V2 理解。
+
+### V1
+
+早期版本以 `request_id` 为顶层目录锚点，常见结构为 `outputs/<request_id>/<run_slug>/`，并拆成：
+
+- `meta/`：运行摘要与元信息
+- `stages/`：阶段级中间结果
+- `events/`：事件级归档与交付结果
+- `reports/`：报告与日志
+
+这一版的问题在于：
+
+- 目录层级主要服务业务请求，不利于从运行批次视角快速定位结果
+- 同一 `request_id` 多次重跑时，目录归属与运行历史容易混淆
+- `meta/stages/events` 的边界偏实现视角，对使用者不够直观
+
+### V2
+
+当前版本统一收敛为 `outputs/<mode>/<run_id>/`，并固定四类核心产物：
+
+- `summary.json`
+- `reports/`
+- `recovery/`
+- `debug/`
+
+同时在 `outputs/<mode>/latest.json` 维护最近一次运行指针。
+
+这一版的设计目标是：
+
+- 先按输入模式分桶，便于区分 `real_source` 与 `user_topic` 等不同入口
+- 再按运行批次组织，便于重跑、回放、审计和对比
+- 将“最终产物”“恢复归档”“调试信息”三类内容分区，降低理解成本
+- 保留 `request_id` 作为业务字段，而不是文件系统主键，使目录结构更稳定
+
+如果后续继续迭代，原则上也应保持这几个稳定约束：
+
+- 目录主键优先表达“运行实例”，而不是“业务请求”
+- 面向使用者暴露的顶层目录尽量少且语义清晰
+- 所有可审计信息都能在 `summary.json` 和 `debug/`、`recovery/` 中互相追溯
+
+### V2.1 微信发布图片修复
+
+本次迭代重点修复了微信草稿发布中的图片链路，让最终草稿尽量保持原报告中的图表表达，而不是退化成纯表格或纯文本。
+
+主要变化包括：
+
+- 发布前先对整份报告 HTML 做视觉媒体准备，再提取文章正文，避免图表配置脚本在正文抽取前被遗漏
+- 微信发布链路支持将原报告中的图表渲染为图片并上传到草稿箱，保留图表标题、图例与内容层次
+- 紧凑表格会以卡片化方式呈现，减少公众号内的平铺感，并提升章节内的视觉层级
+- 图片处理逻辑按渠道目录维护，微信凭据仍然只读取 `clawradar/publishers/wechat/.env`
+
+这次修复的目标不是单纯让图片出现，而是让发布后的草稿更接近原始 HTML 报告的阅读体验。
 
 ## 测试
 
@@ -220,3 +300,37 @@ python -m pytest tests
 本仓库根目录已采用 [GPL-2.0](./LICENSE) 开源协议。
 
 如果你后续准备拆分子模块、二次分发或引入新的第三方组件，仍然建议逐目录核对相关许可证文件。
+
+## Publisher Channels
+
+Channel-specific publisher integrations live under `clawradar/publishers/` so new delivery channels can be added without changing the core delivery contract.
+
+WeChat Official Account publishing rules:
+
+- External channel id: `wechat`
+- Channel-local config path: `clawradar/publishers/wechat/.env`
+- Bootstrap config from `clawradar/publishers/wechat/.env.example`
+- Supported keys: `WECHAT_APPID`, `WECHAT_SECRET`, `WECHAT_AUTHOR`, `WECHAT_COVER_IMAGE_PATH`, `WECHAT_USE_DEFAULT_COVER`, `WECHAT_REPORT_IMAGE_MODE`
+- WeChat credentials are not read from the repo root `.env`
+- WeChat credentials are not exposed as CLI flags
+- Launcher example: `python run_openclaw_deliverable.py --delivery-channel wechat --delivery-target "wechat://draft-box/openclaw-review"`
+- `WECHAT_REPORT_IMAGE_MODE=fallback_table` keeps chart fallback tables and drops inline `<img>` elements for maximum draft stability
+- `WECHAT_REPORT_IMAGE_MODE=upload` uploads inline `<img>` elements to WeChat and keeps them in the article body
+- Chart rendering now prefers the original report visual media path so report charts stay visible in drafts instead of collapsing into list/table fallback
+
+Default delivery behavior:
+
+- If the payload does not include delivery channel settings, ClawRadar archives locally only
+- The effective defaults are `target_mode = archive_only`, `channel = archive_only`, `target = archive://clawradar`
+- No external publish call is made in that case
+
+Publish-only replay:
+
+- Use `--publish-only` to publish an existing write output without rerunning crawl, score, or write stages
+- Default source is the latest `outputs/**/stages/write/content_bundles.json`
+- You can also pass `--publish-file` with either `content_bundles.json` or an archived `payload_snapshot.json`
+- Use `--target-event-id` when the source contains more than one event
+- Successful publishes are recorded under `<run_root>/publish/records.jsonl` to avoid duplicate draft submissions
+- Use `--force-republish` to bypass the duplicate guard intentionally
+- Example: `python run_openclaw_deliverable.py --publish-only --delivery-channel wechat --delivery-target "wechat://draft-box/openclaw-review"`
+- Example with explicit file: `python run_openclaw_deliverable.py --publish-only --publish-file outputs/.../stages/write/content_bundles.json --delivery-channel wechat --delivery-target "wechat://draft-box/openclaw-review"`

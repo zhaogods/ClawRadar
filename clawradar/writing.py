@@ -339,17 +339,18 @@ def _get_report_engine_agent_factory():
 def _build_report_engine_config_overrides(payload: Dict[str, Any]) -> Dict[str, Any]:
     output_context = payload.get("output_context") if isinstance(payload.get("output_context"), dict) else {}
     reports_root = output_context.get("reports_root")
+    debug_root = output_context.get("debug_root")
     if not reports_root:
         return {}
 
     reports_root_path = Path(reports_root).resolve()
-    final_root = reports_root_path / "final"
-    ir_root = reports_root_path / "ir"
-    chapters_root = reports_root_path / "chapters"
-    logs_root = reports_root_path / "logs"
+    debug_root_path = Path(debug_root).resolve() if debug_root else reports_root_path.parent / "debug"
+    ir_root = debug_root_path / "ir"
+    chapters_root = debug_root_path / "chapters"
+    logs_root = debug_root_path / "logs"
 
     return {
-        "OUTPUT_DIR": str(final_root.as_posix()),
+        "OUTPUT_DIR": str(reports_root_path.as_posix()),
         "DOCUMENT_IR_OUTPUT_DIR": str(ir_root.as_posix()),
         "CHAPTER_OUTPUT_DIR": str(chapters_root.as_posix()),
         "LOG_FILE": str((logs_root / "report.log").as_posix()),
