@@ -102,7 +102,10 @@ class IRValidator:
                 errors.append(f"{path}.items[{i}] 必须是区块数组")
                 continue
             for j, sub_block in enumerate(item):
-                self._validate_block(sub_block, f"{path}.items[{i}][{j}]", errors)
+                sub_path = f"{path}.items[{i}][{j}]"
+                if isinstance(sub_block, dict) and sub_block.get("type") == "heading":
+                    errors.append(f"{sub_path}.type 不能为 heading；新小节必须先结束当前 list block")
+                self._validate_block(sub_block, sub_path, errors)
 
     def _validate_table_block(self, block: Dict[str, Any], path: str, errors: List[str]):
         """表格需提供rows/cells/blocks，递归校验单元格内容"""

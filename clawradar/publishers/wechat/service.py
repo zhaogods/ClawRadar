@@ -9,6 +9,16 @@ from typing import Any, Dict, Optional
 
 from dotenv import dotenv_values
 
+from clawradar.writing import (
+    MAX_WECHAT_AUTHOR_CHARS,
+    MAX_WECHAT_DIGEST_TEXT_UNITS,
+    MAX_WECHAT_DIGEST_UTF8_BYTES,
+    MAX_WECHAT_TITLE_CHARS,
+    _regenerate_title,
+    _truncate_utf8,
+    _utf8_length,
+)
+
 from .image_handler import describe_image_policy, resolve_image_mode
 from .markdown_converter import convert_markdown_to_wechat_html
 from .report_html_cleaner import (
@@ -20,6 +30,10 @@ from .report_html_cleaner import (
 
 class WeChatOfficialAccountPublishError(RuntimeError):
     """Raised when a draft cannot be created in WeChat Official Account."""
+
+    def __init__(self, message: str, *, details: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.details = dict(details) if isinstance(details, dict) else {}
 
 
 def _channel_dir() -> Path:
@@ -130,6 +144,7 @@ def _resolve_use_default_cover(options: Dict[str, Any]) -> bool:
         return _bool_option(options.get("no_cover"), default=True)
     return True
 
+
 def _resolve_report_image_mode(options: Dict[str, Any]) -> str:
     return resolve_image_mode(
         _option_value(
@@ -164,6 +179,14 @@ def _read_report_html(content_bundle: Dict[str, Any]) -> str:
     return report_path.read_text(encoding="utf-8", errors="replace")
 
 
+def _resolve_summary_text(content_bundle: Dict[str, Any]) -> tuple[str, str]:
+    summary = content_bundle.get("summary") if isinstance(content_bundle.get("summary"), dict) else {}
+    channel_variants = summary.get("channel_variants") if isinstance(summary.get("channel_variants"), dict) else {}
+    generic_summary = _first_non_blank(summary.get("text"))
+    wechat_summary = _first_non_blank(channel_variants.get("wechat"), generic_summary)
+    return generic_summary, wechat_summary
+
+
 def _resolve_title_and_content(
     content_bundle: Dict[str, Any],
     *,
@@ -171,10 +194,11 @@ def _resolve_title_and_content(
     image_mode: str = "fallback_table",
 ) -> tuple[str, str, str, str]:
     title_text = str(content_bundle.get("title", {}).get("text") or "").strip()
-    summary_text = str(content_bundle.get("summary", {}).get("text") or "").strip()
+    generic_summary_text, summary_text = _resolve_summary_text(content_bundle)
     draft_markdown = str(content_bundle.get("draft", {}).get("body_markdown") or "").strip()
     report_html = _read_report_html(content_bundle)
-    report_base_dir = str(_resolve_report_path(content_bundle).parent) if _resolve_report_path(content_bundle) else None
+    report_path = _resolve_report_path(content_bundle)
+    report_base_dir = str(report_path.parent) if report_path else None
     wechat_article_html = build_wechat_article_from_report_html(
         report_html,
         image_mode=image_mode,
@@ -186,13 +210,129 @@ def _resolve_title_and_content(
     if wechat_article_html:
         article_text = html_fragment_to_text(wechat_article_html)
         if not summary_text:
-            summary_text = (article_text[:120] or title_text).strip()
+            summary_text = (_retryable_wechat_digest(article_text) or title_text).strip()
         if not draft_markdown or looks_like_embedded_report_html(draft_markdown):
             draft_markdown = article_text or summary_text or title_text
         return title_text, summary_text, draft_markdown, wechat_article_html
     if not draft_markdown:
-        draft_markdown = summary_text or title_text
+        draft_markdown = summary_text or generic_summary_text or title_text
     return title_text, summary_text, draft_markdown, ""
+
+
+def _publisher_error_details(publisher: Any) -> Dict[str, Any]:
+    details = getattr(publisher, "last_error_details", None)
+    return dict(details) if isinstance(details, dict) else {}
+
+
+def _is_wechat_title_size_error(details: Dict[str, Any]) -> bool:
+    errcode = str(details.get("errcode") or "").strip()
+    errmsg = str(details.get("errmsg") or "").strip().lower()
+    return errcode == "45003" and "title size out of limit" in errmsg
+
+
+def _is_wechat_description_size_error(details: Dict[str, Any]) -> bool:
+    errcode = str(details.get("errcode") or "").strip()
+    errmsg = str(details.get("errmsg") or "").strip().lower()
+    return errcode == "45004" and "description size out of limit" in errmsg
+
+
+def _retryable_wechat_digest(
+    summary_text: str,
+    *,
+    max_units: int = MAX_WECHAT_DIGEST_TEXT_UNITS,
+    max_bytes: int = MAX_WECHAT_DIGEST_UTF8_BYTES,
+) -> str:
+    value = str(summary_text or "").strip()
+    if not value:
+        return ""
+    if len(value) <= max_units and _utf8_length(value) <= max_bytes:
+        return value
+    constrained = _truncate_utf8(value, max_bytes=max_bytes, fallback="")
+    if len(constrained) <= max_units:
+        return constrained
+    return _truncate_chars(constrained, max_units, "")
+
+
+def _wechat_digest_details(digest: str) -> Dict[str, Any]:
+    chars = len(digest)
+    return {
+        "digest_utf8_bytes": _utf8_length(digest),
+        "digest_chars": chars,
+        "digest_text_units": chars,
+    }
+
+
+def _truncate_chars(text: str, max_chars: int, fallback: str = "") -> str:
+    value = str(text or "").strip()
+    if not value:
+        value = fallback.strip()
+    if not value:
+        return ""
+    if len(value) <= max_chars:
+        return value
+    return value[:max_chars].rstrip()
+
+
+def _normalize_wechat_draft_fields(title_text: str, author: str, summary_text: str) -> tuple[str, str, str]:
+    return (
+        _regenerate_title(title_text, max_chars=MAX_WECHAT_TITLE_CHARS, fallback="Untitled"),
+        _truncate_chars(author, MAX_WECHAT_AUTHOR_CHARS, "ClawRadar"),
+        _truncate_chars(summary_text, MAX_WECHAT_DIGEST_TEXT_UNITS, ""),
+    )
+
+
+def _retryable_wechat_title(
+    title_text: str,
+    *,
+    payload: Dict[str, Any],
+    content_bundle: Dict[str, Any],
+    max_chars: int = MAX_WECHAT_TITLE_CHARS,
+) -> str:
+    company = ""
+    normalized_events = payload.get("normalized_events") if isinstance(payload.get("normalized_events"), list) else []
+    if normalized_events and isinstance(normalized_events[0], dict):
+        company = str(normalized_events[0].get("company") or "").strip()
+    if not company:
+        company = str(content_bundle.get("company") or "").strip()
+    fallback = str(content_bundle.get("event_id") or "OpenClaw Report").strip() or "OpenClaw Report"
+    current_title = str(title_text or "").strip()
+    retry_max_chars = max_chars
+    if current_title and len(current_title) <= max_chars:
+        retry_max_chars = max(1, len(current_title) - 1)
+    return _regenerate_title(current_title, max_chars=retry_max_chars, company=company, fallback=fallback)
+
+
+def _wechat_publish_attempt_details(
+    *,
+    title_text: str,
+    digest: str,
+    attempt: int,
+    stage: str,
+) -> Dict[str, Any]:
+    chars = len(digest)
+    return {
+        "attempt": attempt,
+        "stage": stage,
+        "requested_title": title_text,
+        "requested_title_utf8_bytes": _utf8_length(title_text),
+        "requested_digest": digest,
+        "requested_digest_utf8_bytes": _utf8_length(digest),
+        "requested_digest_chars": chars,
+        "requested_digest_text_units": chars,
+        **_wechat_digest_details(digest),
+    }
+
+
+def _wechat_final_attempt_details(title_text: str, digest: str) -> Dict[str, Any]:
+    chars = len(digest)
+    return {
+        "final_attempted_title": title_text,
+        "final_attempted_title_utf8_bytes": _utf8_length(title_text),
+        "final_attempted_digest": digest,
+        "final_attempted_digest_utf8_bytes": _utf8_length(digest),
+        "final_attempted_digest_chars": chars,
+        "final_attempted_digest_text_units": chars,
+    }
 
 
 def build_wechat_delivery_message(
@@ -212,12 +352,19 @@ def build_wechat_delivery_message(
     publisher = publisher_class(appid, secret)
     access_token = publisher.get_access_token()
     if not access_token:
-        raise WeChatOfficialAccountPublishError("failed to obtain wechat access token")
+        detail = getattr(publisher, "last_error_message", None) or "获取微信 access_token 失败"
+        raise WeChatOfficialAccountPublishError(detail, details=_publisher_error_details(publisher))
 
     title_text, summary_text, draft_markdown, report_article_html = _resolve_title_and_content(
         content_bundle,
         publisher=publisher,
         image_mode=report_image_mode,
+    )
+
+    normalized_title, normalized_author, normalized_digest = _normalize_wechat_draft_fields(
+        title_text,
+        author,
+        summary_text,
     )
 
     if report_article_html:
@@ -231,41 +378,77 @@ def build_wechat_delivery_message(
         thumb_media_id = publisher.upload_image(cover_image_path)
         cover_source = "custom"
     elif use_default_cover:
-        thumb_media_id = publisher.upload_default_cover(title=title_text)
+        thumb_media_id = publisher.upload_default_cover(title=normalized_title)
         cover_source = "default"
 
     if not thumb_media_id:
-        raise WeChatOfficialAccountPublishError("wechat official account draft requires a cover image")
+        detail = getattr(publisher, "last_error_message", None) or "微信草稿封面上传失败"
+        raise WeChatOfficialAccountPublishError(detail, details=_publisher_error_details(publisher))
 
-    digest = summary_text[:120]
-    media_id = publisher.upload_draft(
-        title=title_text,
-        content=html_content,
-        author=author,
-        digest=digest,
-        thumb_media_id=thumb_media_id,
-    )
+    attempt_history = []
+    last_details: Dict[str, Any] = {}
+    current_title = normalized_title
+    current_digest = normalized_digest
+    media_id: Optional[str] = None
+
+    for attempt in (1, 2):
+        attempt_record = _wechat_publish_attempt_details(
+            title_text=current_title,
+            digest=current_digest,
+            attempt=attempt,
+            stage="uploading",
+        )
+        attempt_history.append(attempt_record)
+        try:
+            media_id = publisher.upload_draft(
+                title=current_title,
+                content=html_content,
+                author=normalized_author,
+                digest=current_digest,
+                thumb_media_id=thumb_media_id,
+            )
+            success_details = dict(attempt_record)
+            success_details["stage"] = "succeeded"
+            success_details["media_id"] = media_id
+            attempt_history[-1] = success_details
+            last_details = success_details
+            break
+        except Exception as exc:
+            details = _publisher_error_details(publisher)
+            attempt_history[-1] = {**attempt_record, **details, "stage": "failed"}
+            last_details = attempt_history[-1]
+            if attempt == 1 and _is_wechat_title_size_error(details):
+                retried_title = _retryable_wechat_title(current_title, payload=payload, content_bundle=content_bundle)
+                if retried_title != current_title:
+                    current_title = retried_title
+                    continue
+            detail = getattr(publisher, "last_error_message", None) or str(exc) or "微信草稿创建失败"
+            raise WeChatOfficialAccountPublishError(detail, details={"publish_attempts": attempt_history, **_wechat_final_attempt_details(current_title, current_digest), **last_details}) from exc
+
     if not media_id:
-        raise WeChatOfficialAccountPublishError("wechat official account draft creation failed")
+        detail = getattr(publisher, "last_error_message", None) or "微信草稿创建失败"
+        raise WeChatOfficialAccountPublishError(detail, details={"publish_attempts": attempt_history, **_wechat_final_attempt_details(current_title, current_digest), **last_details})
 
     return {
         "channel": "wechat",
         "template_id": "clawradar_wechat_draft_v1",
         "msg_type": "draft",
-        "title": f"WeChat Draft: {title_text}",
+        "title": f"WeChat Draft: {current_title}",
         "body_markdown": draft_markdown,
         "body_html": html_content,
         "metadata": {
             "request_id": str(payload.get("request_id") or "").strip(),
             "event_id": str(content_bundle.get("event_id") or "").strip(),
             "delivery_target": delivery_target,
-            "author": author,
+            "author": normalized_author,
             "media_id": media_id,
             "thumb_media_id": thumb_media_id,
             "cover_source": cover_source,
             "content_source": "report_html" if report_article_html else "draft_markdown",
             "report_image_policy": describe_image_policy(report_image_mode),
             "access_token_obtained": bool(access_token),
+            "publish_attempts": attempt_history,
+            **_wechat_final_attempt_details(current_title, current_digest),
         },
         "draft": {
             "media_id": media_id,

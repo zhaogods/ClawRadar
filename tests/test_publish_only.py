@@ -25,7 +25,10 @@ class PublishOnlyTestCase(unittest.TestCase):
             {
                 "event_id": event_id,
                 "title": {"text": "Publish Draft"},
-                "summary": {"text": "Summary for publish-only"},
+                "summary": {
+                    "text": "Summary for publish-only",
+                    "channel_variants": {"wechat": "WeChat summary for publish-only"},
+                },
                 "draft": {"body_markdown": "Draft body"},
                 "evidence_pack": {},
             }
@@ -48,7 +51,10 @@ class PublishOnlyTestCase(unittest.TestCase):
             "content_bundle": {
                 "event_id": event_id,
                 "title": {"text": "Snapshot Draft"},
-                "summary": {"text": "Summary from payload snapshot"},
+                "summary": {
+                    "text": "Summary from payload snapshot",
+                    "channel_variants": {"wechat": "WeChat summary from payload snapshot"},
+                },
                 "draft": {"body_markdown": "Snapshot body"},
                 "evidence_pack": {},
             },
@@ -75,7 +81,10 @@ class PublishOnlyTestCase(unittest.TestCase):
             {
                 "event_id": "evt-modern-old",
                 "title": {"text": "Older Modern Report"},
-                "summary": {"text": "Older summary"},
+                "summary": {
+                    "text": "Older summary",
+                    "channel_variants": {"wechat": "Older WeChat summary"},
+                },
                 "draft": {"body_markdown": "Older body"},
                 "evidence_pack": {},
                 "writer_receipt": {
@@ -86,7 +95,10 @@ class PublishOnlyTestCase(unittest.TestCase):
             {
                 "event_id": "evt-modern-new",
                 "title": {"text": "Latest Modern Report"},
-                "summary": {"text": "Latest summary"},
+                "summary": {
+                    "text": "Latest summary",
+                    "channel_variants": {"wechat": "Latest WeChat summary"},
+                },
                 "draft": {"body_markdown": "Latest body"},
                 "evidence_pack": {},
                 "writer_receipt": {
@@ -142,6 +154,10 @@ class PublishOnlyTestCase(unittest.TestCase):
         self.assertEqual(Path(result["publish_source"]["path"]).name, latest_file.name)
         delivered_payload = mocked_deliver.call_args.args[0]
         self.assertEqual(delivered_payload["content_bundle"]["event_id"], "evt-new")
+        self.assertEqual(
+            delivered_payload["content_bundle"]["summary"]["channel_variants"]["wechat"],
+            "WeChat summary for publish-only",
+        )
         self.assertTrue((newer_run / "publish" / "records.jsonl").exists())
 
     def test_publish_only_skips_when_same_content_already_published(self):
@@ -184,6 +200,55 @@ class PublishOnlyTestCase(unittest.TestCase):
         self.assertEqual(second["run_status"], "skipped")
         self.assertEqual(second["skip_reason"], "already_published")
 
+    def test_publish_only_republishes_when_wechat_summary_variant_changes(self):
+        runs_root = self._workspace_tmpdir("publish-only-")
+        run_root = runs_root / "req-new" / "run-new"
+        content_bundles_path = self._write_content_bundles(run_root, event_id="evt-new")
+
+        fake_result = {
+            "run_status": "completed",
+            "request_id": "req-new",
+            "event_id": "evt-new",
+            "delivery_receipt": {
+                "events": [
+                    {
+                        "message_path": "wechat_delivery_message.json",
+                        "payload_path": "payload_snapshot.json",
+                        "archive_path": "archive",
+                        "failure_info": None,
+                    }
+                ]
+            },
+            "errors": [],
+        }
+
+        with patch("clawradar.publish_only.topic_radar_deliver", return_value=fake_result):
+            first = publish_existing_output(
+                runs_root=runs_root,
+                delivery_channel="wechat",
+                delivery_target="wechat://draft-box/openclaw-review",
+            )
+        self.assertEqual(first["run_status"], "completed")
+
+        payload = json.loads(content_bundles_path.read_text(encoding="utf-8"))
+        payload[0]["summary"]["channel_variants"]["wechat"] = "Updated WeChat summary for publish-only"
+        content_bundles_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        with patch("clawradar.publish_only.topic_radar_deliver", return_value=fake_result) as mocked_deliver:
+            second = publish_existing_output(
+                runs_root=runs_root,
+                delivery_channel="wechat",
+                delivery_target="wechat://draft-box/openclaw-review",
+            )
+
+        self.assertEqual(second["run_status"], "completed")
+        self.assertEqual(second["publish_record"]["summary_wechat"], "Updated WeChat summary for publish-only")
+        delivered_payload = mocked_deliver.call_args.args[0]
+        self.assertEqual(
+            delivered_payload["content_bundle"]["summary"]["channel_variants"]["wechat"],
+            "Updated WeChat summary for publish-only",
+        )
+
     def test_publish_only_accepts_explicit_payload_snapshot_file(self):
         runs_root = self._workspace_tmpdir("publish-only-")
         run_root = runs_root / "req-snapshot" / "run-snapshot"
@@ -215,8 +280,14 @@ class PublishOnlyTestCase(unittest.TestCase):
 
         self.assertEqual(result["run_status"], "completed")
         self.assertEqual(result["publish_source"]["kind"], "payload_snapshot")
+        self.assertEqual(result["publish_record"]["summary_text"], "Summary from payload snapshot")
+        self.assertEqual(result["publish_record"]["summary_wechat"], "WeChat summary from payload snapshot")
         delivered_payload = mocked_deliver.call_args.args[0]
         self.assertEqual(delivered_payload["content_bundle"]["event_id"], "evt-snapshot")
+        self.assertEqual(
+            delivered_payload["content_bundle"]["summary"]["channel_variants"]["wechat"],
+            "WeChat summary from payload snapshot",
+        )
         self.assertTrue((run_root / "publish" / "records.jsonl").exists())
 
     def test_publish_only_prefers_mode_latest_pointer_and_latest_bundle_in_modern_outputs(self):
@@ -255,6 +326,10 @@ class PublishOnlyTestCase(unittest.TestCase):
         self.assertTrue(result["publish_source"]["run_root"].endswith("outputs/user_topic/20260420_0332"))
         self.assertEqual(delivered_payload["request_id"], "req-user-topic-001")
         self.assertEqual(delivered_payload["content_bundle"]["event_id"], "evt-modern-new")
+        self.assertEqual(
+            delivered_payload["content_bundle"]["summary"]["channel_variants"]["wechat"],
+            "Latest WeChat summary",
+        )
         self.assertTrue((modern_run / "publish" / "records.jsonl").exists())
 
 

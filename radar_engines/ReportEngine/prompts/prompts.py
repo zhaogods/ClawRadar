@@ -108,6 +108,15 @@ document_layout_output_schema = {
         "subtitle": {"type": "string"},
         "tagline": {"type": "string"},
         "tocTitle": {"type": "string"},
+        "summaryPack": {
+            "type": "object",
+            "properties": {
+                "generic": {"type": "string"},
+                "short": {"type": "string"},
+                "wechat": {"type": "string"},
+                "sourceHint": {"type": "string"},
+            },
+        },
         "hero": {
             "type": "object",
             "properties": {
@@ -334,9 +343,10 @@ SYSTEM_PROMPT_CHAPTER_JSON = f"""
 16. widget配色需与CSS变量兼容，不要硬编码背景色或文字色，legend/ticks由渲染层控制；
 17. 善用callout、kpiGrid、表格、widget等提升版面丰富度，但必须遵守模板章节范围。
 18. 输出前务必自检JSON语法：禁止出现`{{}}{{`或`][`相连缺少逗号、列表项嵌套超过一层、未闭合的括号或未转义换行，`list` block的items必须是`[[block,...], ...]`结构，若无法满足则返回错误提示而不是输出不合法JSON。
-19. 所有widget块必须在顶层提供`data`或`dataRef`（可将props中的`data`上移），确保Chart.js能够直接渲染；缺失数据时宁可输出表格或段落，绝不留空。
-20. 任何block都必须声明合法`type`（heading/paragraph/list/...）；若需要普通文本请使用`paragraph`并给出`inlines`，禁止返回`type:null`或未知值。
-21. blockquote内容限制：blockquote块内部的blocks只允许包含paragraph类型的block，严禁在blockquote内嵌套表格（table）、列表（list）、图表（widget）、标题（heading）、代码块（code）、公式（math）、嵌套引用（blockquote）等任何非paragraph块；如果引用内容需要用表格/列表等复杂结构呈现，必须将其移到blockquote外部。
+19. `heading` 绝不能出现在 `list.items[*]` 内；当内容进入新小节/新标题时，必须先结束当前 list block，再输出新的 heading，禁止把 heading、hr 或新的 list 继续塞进前一个 list item。
+20. 所有widget块必须在顶层提供`data`或`dataRef`（可将props中的`data`上移），确保Chart.js能够直接渲染；缺失数据时宁可输出表格或段落，绝不留空。
+21. 任何block都必须声明合法`type`（heading/paragraph/list/...）；若需要普通文本请使用`paragraph`并给出`inlines`，禁止返回`type:null`或未知值。
+22. blockquote内容限制：blockquote块内部的blocks只允许包含paragraph类型的block，严禁在blockquote内嵌套表格（table）、列表（list）、图表（widget）、标题（heading）、代码块（code）、公式（math）、嵌套引用（blockquote）等任何非paragraph块；如果引用内容需要用表格/列表等复杂结构呈现，必须将其移到blockquote外部。
 
 <CHAPTER JSON SCHEMA>
 {CHAPTER_JSON_SCHEMA_TEXT}
@@ -355,8 +365,9 @@ SYSTEM_PROMPT_CHAPTER_JSON_REPAIR = f"""
 1. 所有chapter必须满足IR版本 {IR_VERSION} 约束，仅允许以下block.type：{', '.join(ALLOWED_BLOCK_TYPES)}；
 2. paragraph.inlines中的marks必须来自以下集合：{', '.join(ALLOWED_INLINE_MARKS)}；
 3. 允许的结构、字段与嵌套规则全部写在《CHAPTER JSON SCHEMA》中，任何缺少字段、数组嵌套错误或list.items不是二维数组的情况都必须修复；
-4. 不得更改事实、数值与结论，只能对结构/字段名/嵌套层级做最小修改以通过校验；
-5. 最终输出只能包含合法JSON，格式严格为：{{"chapter": {{...修复后的章节JSON...}}}}，禁止额外解释或Markdown。
+4. `heading` 绝不能出现在 `list.items[*]` 内；如果某个 list item 中已经混入新小节标题、hr 或新的 list，必须将这些章节级 block 提升到当前 list block 之后；
+5. 不得更改事实、数值与结论，只能对结构/字段名/嵌套层级做最小修改以通过校验；
+6. 最终输出只能包含合法JSON，格式严格为：{{"chapter": {{...修复后的章节JSON...}}}}，禁止额外解释或Markdown。
 
 <CHAPTER JSON SCHEMA>
 {CHAPTER_JSON_SCHEMA_TEXT}
@@ -390,18 +401,22 @@ SYSTEM_PROMPT_DOCUMENT_LAYOUT = f"""
 输入包含 templateOverview（模板标题+目录整体）、sections 列表以及多源报告，请先把模板标题和目录当成一个整体，与多引擎内容对照后设计标题与目录，再延伸出可直接渲染的视觉主题。你的输出会被独立存储以便后续拼接，请确保字段齐备。
 
 目标：
-1. 生成具有中文叙事风格的 title/subtitle/tagline，并确保可直接放在封面中央，文案中需自然提到"文章总览"；
-2. 给出 hero：包含summary、highlights、actions、kpis（可含tone/delta），用于强调重点洞察与执行提示；
-3. 输出 tocPlan，一级目录固定用中文数字（"一、二、三"），二级目录用"1.1/1.2"，可在description里说明详略；如需定制目录标题，请填写 tocTitle；
-4. 根据模板结构和素材密度，为 themeTokens / layoutNotes 提出字体、字号、留白建议（需特别强调目录、正文一级标题字号保持统一），如需色板或暗黑模式兼容也在此说明；
-5. 严禁要求外部图片或AI生图，推荐Chart.js图表、表格、色块、KPI卡等可直接渲染的原生组件；
-6. 不随意增删章节，仅优化命名或描述；若有排版或章节合并提示，请放入 layoutNotes，渲染层会严格遵循；
-7. **SWOT块使用规则**：在 tocPlan 中决定是否以及在哪一章使用SWOT分析块（swotTable）：
+1. 生成具有中文叙事风格的 title/subtitle/tagline，并确保可直接放在封面中央；文案中需自然提到"文章总览"，但优先放在 subtitle 或 tagline，不要为了满足该要求牺牲 title 长度；
+2. title 必须直接产出可用于微信公众号草稿的最终标题，硬性限制为不超过 64 个字符（中文一个字、英文一个字母、标点都按一个字符计算），优先控制在 20 个汉字左右；一旦发现标题超长，必须直接重写一个更短的新标题，而不是裁掉原标题尾部；
+3. title 必须语义完整、主语明确、不可依赖下游截断；若素材过长，先压缩修饰词、副标题、重复公司名与冗余定语，再保留核心事件对象与动作；如果输入中出现 titleConstraints 或 titleRewriteFeedback，必须严格按其要求重写，不得把上一版标题机械裁短后返回；
+4. title 不要拼接长句、完整事件描述或双重修饰词；禁止输出需要靠截断才能成立的半句标题，也禁止用“裁掉几个字”来冒充重写；
+5. 给出 hero：包含summary、highlights、actions、kpis（可含tone/delta），用于强调重点洞察与执行提示；
+6. 额外输出 summaryPack：包含 generic、short、wechat、sourceHint 四个字段；generic 用 1-2 句纯文本概括整篇报告，short 输出更短的一句摘要，wechat 输出适合微信公众号 description 的纯文本摘要，要求语义完整、不要夹带 Markdown/HTML/JSON，优先控制在 120 个字符内且不能依赖下游截断，sourceHint 仅用于标记摘要主要参考了哪一类内容（如 hero.summary / subtitle / tocPlan.description）；
+7. 输出 tocPlan，一级目录固定用中文数字（"一、二、三"），二级目录用"1.1/1.2"，可在description里说明详略；如需定制目录标题，请填写 tocTitle；
+8. 根据模板结构和素材密度，为 themeTokens / layoutNotes 提出字体、字号、留白建议（需特别强调目录、正文一级标题字号保持统一），如需色板或暗黑模式兼容也在此说明；
+9. 严禁要求外部图片或AI生图，推荐Chart.js图表、表格、色块、KPI卡等可直接渲染的原生组件；
+10. 不随意增删章节，仅优化命名或描述；若有排版或章节合并提示，请放入 layoutNotes，渲染层会严格遵循；
+11. **SWOT块使用规则**：在 tocPlan 中决定是否以及在哪一章使用SWOT分析块（swotTable）：
    - 全文最多只允许一个章节使用SWOT块，该章节需设置 `allowSwot: true`；
    - 其他章节必须设置 `allowSwot: false` 或省略该字段；
    - SWOT块适合出现在"结论与建议"、"综合评估"、"战略分析"等总结性章节；
    - 如果报告内容不适合使用SWOT分析（如纯数据监测报告），则所有章节都不设置 `allowSwot: true`。
-8. **PEST块使用规则**：在 tocPlan 中决定是否以及在哪一章使用PEST宏观环境分析块（pestTable）：
+11. **PEST块使用规则**：在 tocPlan 中决定是否以及在哪一章使用PEST宏观环境分析块（pestTable）：
    - 全文最多只允许一个章节使用PEST块，该章节需设置 `allowPest: true`；
    - 其他章节必须设置 `allowPest: false` 或省略该字段；
    - PEST块用于分析宏观环境因素（政治Political、经济Economic、社会Social、技术Technological）；
@@ -434,7 +449,9 @@ SYSTEM_PROMPT_DOCUMENT_LAYOUT = f"""
    - 不要在JSON中添加注释
    - description等文本字段中不得包含JSON结构
 5. 所有字符串值使用双引号，数值不使用引号
-6. 再次强调：tocPlan中每个条目的description必须是纯文本，不能包含任何JSON片段
+6. `title` 字段必须已经满足 64 个字符限制，且保持语义完整，不得假设后续系统会帮你截断；若上一版标题被反馈为超长，你必须基于核心事件重新生成一版完整短标题，而不是沿用原句做截断
+7. 再次强调：tocPlan中每个条目的description必须是纯文本，不能包含任何JSON片段
+8. summaryPack.generic / short / wechat 也必须是纯文本，不得包含 HTML、Markdown、列表标记、代码块或 JSON 结构；若无法确定，返回空字符串，不要伪造对象嵌套到文本里
 """
 
 # 篇幅规划提示词

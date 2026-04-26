@@ -2,6 +2,7 @@ import importlib.util
 import json
 import unittest
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -183,6 +184,26 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         replay_payload["delivery_target"] = orchestration_result["delivery_receipt"]["delivery_target"]
         return replay_payload
 
+    def test_run_id_uses_beijing_time_while_started_at_stays_utc(self):
+        payload = self._build_publish_ready_pipeline_payload()
+        fixed_utc = datetime(2026, 4, 22, 16, 5, tzinfo=timezone.utc)
+
+        class FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return fixed_utc.replace(tzinfo=None)
+                return fixed_utc.astimezone(tz)
+
+        tmpdir = self._workspace_tmpdir("automation-")
+        with patch("clawradar.orchestrator.datetime", FixedDateTime):
+            result = topic_radar_orchestrate(payload, runs_root=Path(tmpdir))
+
+        self.assertEqual(Path(result["output_root"]).name, "20260423_0005")
+        self.assertEqual(result["run_summary"]["run_id"], "20260423_0005")
+        self.assertEqual(result["run_summary"]["started_at"], "2026-04-22T16:05:00Z")
+        self.assertTrue((Path(tmpdir) / "inline_candidates" / "20260423_0005" / "summary.json").exists())
+
     def test_manual_full_pipeline_runs_all_stages_and_backfills_statuses(self):
         payload = self._build_publish_ready_pipeline_payload()
 
@@ -201,8 +222,6 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(result["processed_event_ids"], ["evt-stage2-001"])
         self.assertEqual(result["event_statuses"][0]["event_id"], "evt-stage2-001")
         self.assertEqual(result["event_statuses"][0]["deliver_status"], "delivered")
-
-    def test_defaults_use_external_writer_and_archive_only(self):
         payload = self._load_fixture("clawradar_score_publish_ready_input.json")
         fake_result = {
             "html_content": "<html><body><h1>综合报告</h1><p>默认正式路径调用外部写作。</p></body></html>",
@@ -213,6 +232,14 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             "ir_relative_path": "outputs/reports/ir/default_report_ir.json",
             "state_filepath": "/tmp/default_report_state.json",
             "state_relative_path": "outputs/reports/default_report_state.json",
+            "report_metadata": {
+                "summaryPack": {
+                    "generic": "通用摘要。",
+                    "short": "短摘要。",
+                    "wechat": "微信摘要。",
+                    "sourceHint": "hero.summary",
+                }
+            },
         }
 
         class FakeAgent:
@@ -237,6 +264,10 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(result["delivery_receipt"]["delivery_target"], "archive://clawradar")
         self.assertEqual(result["content_bundles"][0]["writer_receipt"]["executor"], WriteExecutor.EXTERNAL_WRITER.value)
         self.assertEqual(result["content_bundles"][0]["writer_receipt"]["report_id"], "report-defaults-001")
+        self.assertEqual(
+            result["content_bundles"][0]["summary"]["channel_variants"]["wechat"],
+            "微信摘要。",
+        )
         self.assertEqual(result["event_statuses"][0]["deliver_status"], "archived")
         self.assertEqual(result["event_statuses"][0]["artifact_summary"]["delivery_receipt_status"], "archived")
         self.assertEqual(result["artifact_summary"]["delivered_count"], 0)
@@ -308,7 +339,7 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
 
         args = SimpleNamespace(
             publish_only=True,
-            publish_file="outputs/sample/stages/write/content_bundles.json",
+            publish_file="outputs/sample/debug/content_bundles.json",
             delivery_channel="wechat",
             delivery_target="wechat://draft-box/openclaw-review",
             target_event_id="evt-stage2-001",
@@ -323,7 +354,7 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
                         module.main()
 
         mocked_kwargs = mocked_publish.call_args.kwargs
-        self.assertEqual(mocked_kwargs["publish_file"], Path("outputs/sample/stages/write/content_bundles.json"))
+        self.assertEqual(mocked_kwargs["publish_file"], Path("outputs/sample/debug/content_bundles.json"))
         self.assertEqual(mocked_kwargs["delivery_channel"], "wechat")
         self.assertEqual(mocked_kwargs["delivery_target"], "wechat://draft-box/openclaw-review")
         self.assertEqual(mocked_kwargs["target_event_id"], "evt-stage2-001")
@@ -379,7 +410,9 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             archived_payload["content_bundle"],
             result["stage_results"]["deliver"]["content_bundle"],
         )
-        self.assertEqual(archived_message["metadata"]["event_id"], event_id)
+        self.assertEqual(
+            archived_message["metadata"]["event_id"], event_id
+        )
 
         self.assertEqual(result["stage_results"]["write"]["content_bundles"][0], result["content_bundles"][0])
         self.assertEqual(
@@ -401,6 +434,14 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             "ir_relative_path": "outputs/reports/ir/archive_default_report_ir.json",
             "state_filepath": "/tmp/archive_default_report_state.json",
             "state_relative_path": "outputs/reports/archive_default_report_state.json",
+            "report_metadata": {
+                "summaryPack": {
+                    "generic": "归档通用摘要。",
+                    "short": "归档短摘要。",
+                    "wechat": "归档微信摘要。",
+                    "sourceHint": "hero.summary",
+                }
+            },
         }
 
         class FakeAgent:
@@ -456,10 +497,12 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(archived_payload["delivery_request"]["delivery_target"], "archive://clawradar")
         self.assertEqual(archived_payload["scorecard"], result["scored_events"][0]["scorecard"])
         self.assertEqual(
-            archived_payload["content_bundle"],
-            result["stage_results"]["deliver"]["content_bundle"],
+            archived_payload["content_bundle"]["summary"]["channel_variants"]["wechat"],
+            "归档微信摘要。",
         )
-        self.assertEqual(archived_message["metadata"]["event_id"], event_id)
+        self.assertEqual(
+            archived_message["metadata"]["event_id"], event_id
+        )
         self.assertEqual(result["delivery_receipt"]["delivery_channel"], "archive_only")
         self.assertEqual(result["delivery_receipt"]["delivery_target"], "archive://clawradar")
 
@@ -472,23 +515,49 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
 
     def test_deliver_only_replay_reuses_existing_artifacts_without_reexecuting_upstream_stages(self):
         payload = self._build_publish_ready_pipeline_payload()
+        payload["entry_options"]["write"] = {"executor": "external_writer"}
         first_delivery_time = "2026-04-09T13:10:00Z"
         second_delivery_time = "2026-04-09T13:11:00Z"
+        fake_result = {
+            "html_content": "<html><body><h1>综合报告</h1><p>deliver_only replay persistence check.</p></body></html>",
+            "report_id": "report-replay-001",
+            "report_filepath": "/tmp/replay_report.html",
+            "report_relative_path": "outputs/reports/replay_report.html",
+            "ir_filepath": "/tmp/replay_report_ir.json",
+            "ir_relative_path": "outputs/reports/ir/replay_report_ir.json",
+            "state_filepath": "/tmp/replay_report_state.json",
+            "state_relative_path": "outputs/reports/replay_report_state.json",
+            "report_metadata": {
+                "summaryPack": {
+                    "generic": "重放通用摘要。",
+                    "short": "重放短摘要。",
+                    "wechat": "重放微信摘要。",
+                    "sourceHint": "hero.summary",
+                }
+            },
+        }
+
+        class FakeAgent:
+            def generate_report(self, **kwargs):
+                self.kwargs = kwargs
+                return fake_result
 
         tmpdir = self._workspace_tmpdir("automation-")
-        first_result = topic_radar_orchestrate(
-            payload,
-            delivery_time=first_delivery_time,
-            runs_root=Path(tmpdir),
-        )
-        replay_payload = self._build_deliver_only_replay_payload(first_result)
-        replay_result = topic_radar_orchestrate(
-            replay_payload,
-            execution_mode="deliver_only",
-            delivery_time=second_delivery_time,
-            runs_root=Path(tmpdir),
-        )
+        with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()):
+            first_result = topic_radar_orchestrate(
+                payload,
+                delivery_time=first_delivery_time,
+                runs_root=Path(tmpdir),
+            )
+            replay_payload = self._build_deliver_only_replay_payload(first_result)
+            replay_result = topic_radar_orchestrate(
+                replay_payload,
+                execution_mode="deliver_only",
+                delivery_time=second_delivery_time,
+                runs_root=Path(tmpdir),
+            )
 
+        self.assertEqual(first_result["stage_results"]["deliver"]["content_bundle"]["summary"]["channel_variants"]["wechat"], "重放微信摘要。")
         self.assertEqual(replay_result["run_status"], "completed")
         self.assertEqual(replay_result["final_stage"], "deliver")
         self.assertEqual(replay_result["stage_statuses"]["ingest"]["status"], "skipped")
@@ -510,6 +579,10 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(
             replay_result["stage_results"]["deliver"]["scorecard"],
             first_result["stage_results"]["deliver"]["scorecard"],
+        )
+        self.assertEqual(
+            replay_result["stage_results"]["deliver"]["content_bundle"]["summary"]["channel_variants"]["wechat"],
+            first_result["stage_results"]["deliver"]["content_bundle"]["summary"]["channel_variants"]["wechat"],
         )
 
         first_payload_path = Path(first_result["delivery_receipt"]["events"][0]["payload_path"])

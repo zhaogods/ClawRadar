@@ -1,120 +1,26 @@
 # ClawRadar
 
-面向真实来源热点发现、结构化评分、内容生成与归档交付的开源舆情流水线。
+ClawRadar 是一条面向真实来源热点发现、结构化评分、内容生成与归档/发布的开源流水线。
 
-当前仓库分成两层：
+当前仓库将顶层统一流程保留在 `clawradar/`，并复用 `radar_engines/` 中保留下来的能力层。
 
-- `clawradar/`：顶层统一编排主线，负责入口、契约、测试和正式 launcher。
-- `radar_engines/`：当前保留的能力层，现阶段完整保留 `MindSpider`、`QueryEngine`、`MediaEngine`、`ReportEngine` 四个引擎，以及它们依赖的共享基础设施。
+## 这个仓库能做什么
 
-这轮改造的目标是先剥掉旧平台外壳，再讨论四个引擎内部如何继续瘦身。现在不做四引擎内部裁剪。
+- 从真实来源或用户给定主题中接收候选事件。
+- 对事件做标准化处理并生成评分结果。
+- 生成或重写内容包。
+- 通过适配器归档或发布到支持的渠道。
+- 保留可回放、可审计、可排障的运行产物。
 
-## 项目概览
+## 主入口
 
-ClawRadar 试图把“舆情发现 -> 证据组织 -> 评分决策 -> 写作产出 -> 归档交付”收敛到同一条可复用链路里。它既可以作为独立命令行流程运行，也可以作为上层系统调用的协议化组件使用。
-
-![ClawRadar 框架图](./image/clawradar-framework.png)
-
-当前顶层实现强调四点：
-
-- 统一入口，而不是分散脚本
-- 结构化中间产物，而不是仅返回文本
-- 可归档、可回放、可审计的运行结果
-- 与 `radar_engines/` 能力层复用，而不是重复造轮子
-
-## 当前入口
-
-顶层主入口是：
-
-```python
-from clawradar.orchestrator import topic_radar_orchestrate
-```
-
-围绕这个入口，项目已经具备这些能力：
-
-- 输入适配：`inline_candidates`、`inline_normalized`、`inline_topic_cards`、`real_source`、`user_topic`
-- 标准化 ingest：收敛为统一的 `normalized_events`
-- 选题与抓取桥接：支持真实来源加载，也支持从用户主题派生抓取请求
-- 结构化评分：生成时间线、事实点、风险标记、维度分和最终决策
-- 写作阶段：支持内置写作，也支持委托 `ReportEngine` 作为外部 writer
-- 交付阶段：支持飞书消息格式和本地归档快照
-- 编排与产物管理：每次运行都会生成 `summary.json`、`reports/`、`recovery/`、`debug/` 等输出产物
-
-## 仓库结构
-
-```text
-ClawRadar/
-├─ clawradar/                   # 顶层工作流主线
-│  ├─ contracts.py              # ingest 契约与标准化
-│  ├─ topics.py                 # 选题卡片、user_topic 适配
-│  ├─ real_source.py            # real_source 适配
-│  ├─ scoring.py                # 评分与决策
-│  ├─ writing.py                # 写作与外部 writer 适配
-│  ├─ delivery.py               # 交付与归档
-│  └─ orchestrator.py           # 统一编排入口
-├─ run_openclaw_deliverable.py  # 正式推荐 launcher
-├─ scripts/
-│  └─ run_real_source_demo.py   # real_source 演示脚本
-├─ tests/                       # 顶层主线测试
-├─ radar_engines/               # 当前保留的能力层
-│  ├─ MindSpider/               # 热点采集与深爬能力
-│  ├─ QueryEngine/              # 通用搜索能力
-│  ├─ MediaEngine/              # 多模态搜索能力
-│  ├─ ReportEngine/             # 报告生成与渲染能力
-│  ├─ static/                   # ReportEngine 仍在使用的静态资源
-│  ├─ utils/                    # 共享工具
-│  └─ config.py                 # 共享配置入口
-├─ clawradar-skill/             # 单文件 Skill 的仓库内维护目录
-└─ outputs/                     # 运行输出目录
-```
-
-## `radar_engines` 当前边界
-
-当前策略是保留四个引擎整体，不做内部子功能裁剪。
-
-保留的引擎：
-
-- `MindSpider`
-- `QueryEngine`
-- `MediaEngine`
-- `ReportEngine`
-
-当前仍需保留的共享基础设施：
-
-- `radar_engines/config.py`
-- `radar_engines/utils/`
-- `radar_engines/static/`
-
-已经删除的旧平台外壳包括：`ForumEngine`、`InsightEngine`、`SingleEngineApp`、`SentimentAnalysisModel`、旧的 Streamlit 报告目录、旧测试目录和旧入口脚本。
-
-## 主流程
-
-`topic_radar_orchestrate()` 负责主链路串联：
-
-1. 接收输入并解析 `entry_options`
-2. 根据输入模式决定是否走 `real_source` / `user_topic` 适配
-3. 生成候选事件并做 ingest 标准化
-4. 对候选事件进行评分，得到 `publish_ready`、`watchlist`、`need_more_evidence` 等结论
-5. 对可发布事件生成内容包
-6. 执行交付或归档
-7. 输出统一的 `run_summary`、阶段状态和事件状态
-
-正式 launcher 默认策略：
-
-- `write.executor = external_writer`
-- `delivery.target_mode = archive_only`
-- `delivery.target = archive://clawradar`
-- `degrade.* = fail`
-
-这意味着它优先走正式交付路径，但不会默认直接向外部渠道推送。
+- CLI 启动器：`run_openclaw_deliverable.py`
+- Python API：`clawradar.orchestrator.topic_radar_orchestrate()`
+- 既有产物回放发布：`--publish-only`
 
 ## 快速开始
 
-### 环境建议
-
-仓库顶层代码使用 Python 3.10+ 语法，建议使用 Python 3.10 或 3.11。
-
-如果你只想跑顶层契约测试，最小依赖很少；如果你要启用 `real_source`、外部写作或完整引擎能力，建议安装项目根目录 `requirements.txt` 中的依赖。
+### 环境准备
 
 ```bash
 python -m venv .venv
@@ -123,214 +29,134 @@ pip install -r requirements.txt
 pip install pytest
 ```
 
-### 最小 Python 调用
-
-```python
-from clawradar.orchestrator import topic_radar_orchestrate
-
-payload = {
-    "request_id": "req-minimal-001",
-    "trigger_source": "manual",
-    "topic_candidates": [
-        {
-            "event_id": "evt-minimal-001",
-            "event_title": "OpenAI 发布企业级智能体平台更新",
-            "event_time": "2026-04-09T08:00:00Z",
-            "source_url": "https://example.com/openai-update"
-        }
-    ]
-}
-
-result = topic_radar_orchestrate(payload)
-print(result["run_status"], result["final_stage"], result["decision_status"])
-```
-
-### 正式 launcher
+### 运行 real_source 流程
 
 ```bash
 python run_openclaw_deliverable.py --input-mode real_source --source-ids weibo --limit 5
+```
+
+### 运行 user_topic 流程
+
+```bash
 python run_openclaw_deliverable.py --input-mode user_topic --topic "AI 智能体治理" --company "OpenAI" --keywords 治理 审计
 ```
 
-### real_source 演示
+### 回放既有输出并重新发布
 
 ```bash
-python scripts/run_real_source_demo.py
+python run_openclaw_deliverable.py --publish-only --delivery-channel wechat --delivery-target wechat://draft-box/openclaw-review --publish-file outputs/<mode>/<run_id>/debug/content_bundles.json
 ```
 
-这个脚本会关闭写作和交付，只保留真实来源加载和评分，便于本地验证输入适配链路。
-
-## 输入模式
-
-当前最重要的外部输入模式：
-
-- `real_source`：从 `MindSpider` 等真实来源拉取热点候选事件，再进入统一主链路。
-- `user_topic`：用户只给主题、公司、关键词等提示词，系统先构造主题上下文，再委托真实来源层做候选发现。
-
-此外也支持直接给：
-
-- `topic_candidates`
-- `normalized_events`
-- `topic_cards`
-
-这使得项目既可以作为完整流水线运行，也可以作为中间协议层嵌入其他系统。
-
-## 输出结果
-
-当前版本的单次运行输出目录统一为 `outputs/<mode>/<run_id>/`。
-
-- `mode`：输入模式，例如 `real_source`、`user_topic`
-- `run_id`：本次运行标识，格式为 `YYYYMMDD_HHMM`，例如 `20260420_0332`
-
-典型目录结构如下：
-
-```text
-outputs/
-└─ <mode>/
-   ├─ latest.json                 # 当前 mode 最近一次运行指针
-   └─ <run_id>/
-      ├─ summary.json             # 单次运行总览摘要
-      ├─ reports/                 # 最终报告产物
-      ├─ recovery/                # 按事件归档的交付/恢复快照
-      └─ debug/                   # 调试与阶段中间产物
-```
-
-各目录含义：
-
-- `summary.json`：该次运行的总览结果，包含 `run_status`、`final_stage`、`decision_status`、`run_summary`、`delivery_receipt`、`output_manifest` 等核心字段。
-- `reports/`：面向人阅读的最终产物，通常包括 HTML 报告、报告状态文件等。
-- `recovery/`：按 `event_id` 归档的恢复与交付快照，通常包含 `scorecard.json`、`payload_snapshot.json`、`feishu_message.json` 等事件级留痕文件。
-- `debug/`：供排查问题和审计链路使用的中间产物，通常包含 `input.json`、`entry_resolution.json`、`stage_statuses.json`、`crawl.json`、`topics.json`、`ingest.json`、`score.json`、`write.json`、`deliver.json` 等。
-- `latest.json`：位于 `outputs/<mode>/latest.json`，用来指向该输入模式最近一次运行的 `run_id`、`output_root` 和摘要信息，便于外部系统快速定位最新结果。
-
-补充说明：
-
-- `request_id` 仍然保留在 `summary.json`、`delivery_receipt`、事件归档文件和业务 payload 中，用于业务追踪与幂等关联。
-- `request_id` 不再作为输出目录名使用，避免同一请求多次重跑时产生目录语义混乱。
-
-## 版本迭代
-
-输出目录规范已经历一次明确收敛，当前可按 V1 和 V2 理解。
-
-### V1
-
-早期版本以 `request_id` 为顶层目录锚点，常见结构为 `outputs/<request_id>/<run_slug>/`，并拆成：
-
-- `meta/`：运行摘要与元信息
-- `stages/`：阶段级中间结果
-- `events/`：事件级归档与交付结果
-- `reports/`：报告与日志
-
-这一版的问题在于：
-
-- 目录层级主要服务业务请求，不利于从运行批次视角快速定位结果
-- 同一 `request_id` 多次重跑时，目录归属与运行历史容易混淆
-- `meta/stages/events` 的边界偏实现视角，对使用者不够直观
-
-### V2
-
-当前版本统一收敛为 `outputs/<mode>/<run_id>/`，并固定四类核心产物：
-
-- `summary.json`
-- `reports/`
-- `recovery/`
-- `debug/`
-
-同时在 `outputs/<mode>/latest.json` 维护最近一次运行指针。
-
-这一版的设计目标是：
-
-- 先按输入模式分桶，便于区分 `real_source` 与 `user_topic` 等不同入口
-- 再按运行批次组织，便于重跑、回放、审计和对比
-- 将“最终产物”“恢复归档”“调试信息”三类内容分区，降低理解成本
-- 保留 `request_id` 作为业务字段，而不是文件系统主键，使目录结构更稳定
-
-如果后续继续迭代，原则上也应保持这几个稳定约束：
-
-- 目录主键优先表达“运行实例”，而不是“业务请求”
-- 面向使用者暴露的顶层目录尽量少且语义清晰
-- 所有可审计信息都能在 `summary.json` 和 `debug/`、`recovery/` 中互相追溯
-
-### V2.1 微信发布图片修复
-
-本次迭代重点修复了微信草稿发布中的图片链路，让最终草稿尽量保持原报告中的图表表达，而不是退化成纯表格或纯文本。
-
-主要变化包括：
-
-- 发布前先对整份报告 HTML 做视觉媒体准备，再提取文章正文，避免图表配置脚本在正文抽取前被遗漏
-- 微信发布链路支持将原报告中的图表渲染为图片并上传到草稿箱，保留图表标题、图例与内容层次
-- 紧凑表格会以卡片化方式呈现，减少公众号内的平铺感，并提升章节内的视觉层级
-- 图片处理逻辑按渠道目录维护，微信凭据仍然只读取 `clawradar/publishers/wechat/.env`
-
-这次修复的目标不是单纯让图片出现，而是让发布后的草稿更接近原始 HTML 报告的阅读体验。
-
-## 测试
+### 运行测试
 
 ```bash
 python -m pytest tests
 ```
 
-当前顶层主线重点验证的是：
+## 支持的输入模式
 
-- 统一入口的行为一致性
-- `publish_ready` / `need_more_evidence` 等状态路由
-- 写作与交付阶段的协议稳定性
-- 归档产物是否完整落盘
+- `real_source`：从真实来源链路拉取候选事件。
+- `user_topic`：根据用户给定的主题、公司、关键词等构造候选事件。
+- `inline_candidates`、`inline_normalized`、`inline_topic_cards`：接收已经准备好的 inline 载荷。
 
-## 适合从哪里开始读
+## 默认执行行为
 
-如果你第一次接手这个项目，推荐按下面顺序阅读：
+- 写作执行器默认是 `external_writer`。
+- 交付目标默认是 `archive_only`。
+- 输入、写作、交付三个阶段的 degrade 策略默认都是 `fail`。
+- `publish-only` 是正式支持的回放发布路径，可在不重跑上游阶段的情况下复用既有生成结果。
 
-1. `run_openclaw_deliverable.py`
-2. `clawradar/orchestrator.py`
-3. `clawradar/contracts.py`
-4. `clawradar/scoring.py`
-5. `clawradar/writing.py`
-6. `clawradar/delivery.py`
-7. `tests/test_clawradar_automation.py`
+## 输出结构
 
-## 注意事项
+一次运行会写入：
 
-- 当前仓库里同时保留了顶层编排和遗留能力层，阅读时不要把 `clawradar/` 和 `radar_engines/` 当成两套并列入口。
-- `real_source` 和 `external_writer` 目前仍依赖 `radar_engines/` 中的模块以及对应运行环境。
-- `ReportEngine` 内部仍保留少量对已删除旧模块的兼容引用，这些属于后续清理对象，不影响当前“四引擎整体保留”的边界。
+```text
+outputs/<mode>/<run_id>/
+```
 
-## 开源协议
+其中 `run_id` 使用北京时间生成，格式为 `YYYYMMDD_HHMM`。
 
-本仓库根目录已采用 [GPL-2.0](./LICENSE) 开源协议。
+每次运行目录中的主要产物包括：
 
-如果你后续准备拆分子模块、二次分发或引入新的第三方组件，仍然建议逐目录核对相关许可证文件。
+- `summary.json`：运行总览与阶段结果。
+- `reports/`：最终面向人阅读的报告产物。
+- `recovery/`：按事件归档的回放与交付快照。
+- `debug/`：诊断用的中间产物与阶段追踪信息。
 
-## Publisher Channels
+每个输入模式目录下还会保留：
 
-Channel-specific publisher integrations live under `clawradar/publishers/` so new delivery channels can be added without changing the core delivery contract.
+- `outputs/<mode>/latest.json`：指向该模式最近一次运行结果的指针文件。
 
-WeChat Official Account publishing rules:
+`publish-only` 可以直接回放已有的 `debug/content_bundles.json` 或 `payload_snapshot.json`，同时兼容部分旧路径产物。
 
-- External channel id: `wechat`
-- Channel-local config path: `clawradar/publishers/wechat/.env`
-- Bootstrap config from `clawradar/publishers/wechat/.env.example`
-- Supported keys: `WECHAT_APPID`, `WECHAT_SECRET`, `WECHAT_AUTHOR`, `WECHAT_COVER_IMAGE_PATH`, `WECHAT_USE_DEFAULT_COVER`, `WECHAT_REPORT_IMAGE_MODE`
-- WeChat credentials are not read from the repo root `.env`
-- WeChat credentials are not exposed as CLI flags
-- Launcher example: `python run_openclaw_deliverable.py --delivery-channel wechat --delivery-target "wechat://draft-box/openclaw-review"`
-- `WECHAT_REPORT_IMAGE_MODE=fallback_table` keeps chart fallback tables and drops inline `<img>` elements for maximum draft stability
-- `WECHAT_REPORT_IMAGE_MODE=upload` uploads inline `<img>` elements to WeChat and keeps them in the article body
-- Chart rendering now prefers the original report visual media path so report charts stay visible in drafts instead of collapsing into list/table fallback
+## 版本迭代
 
-Default delivery behavior:
+这个项目经历过几轮针对顶层主流程的收敛。整体目标一直是：让主链路更容易运行、更容易审计、更容易回放，同时避免把整套旧平台结构重新带回根流程。
 
-- If the payload does not include delivery channel settings, ClawRadar archives locally only
-- The effective defaults are `target_mode = archive_only`, `channel = archive_only`, `target = archive://clawradar`
-- No external publish call is made in that case
+### V1
 
-Publish-only replay:
+第一个可用的顶层版本明确建立了 `clawradar/` 这一统一编排层，并把主流程拆成清晰的四个阶段：
 
-- Use `--publish-only` to publish an existing write output without rerunning crawl, score, or write stages
-- Default source is the latest `outputs/**/stages/write/content_bundles.json`
-- You can also pass `--publish-file` with either `content_bundles.json` or an archived `payload_snapshot.json`
-- Use `--target-event-id` when the source contains more than one event
-- Successful publishes are recorded under `<run_root>/publish/records.jsonl` to avoid duplicate draft submissions
-- Use `--force-republish` to bypass the duplicate guard intentionally
-- Example: `python run_openclaw_deliverable.py --publish-only --delivery-channel wechat --delivery-target "wechat://draft-box/openclaw-review"`
-- Example with explicit file: `python run_openclaw_deliverable.py --publish-only --publish-file outputs/.../stages/write/content_bundles.json --delivery-channel wechat --delivery-target "wechat://draft-box/openclaw-review"`
+- ingest
+- score
+- write
+- deliver
+
+这一版的意义在于把原先分散在旧脚本和引擎内部路径中的调用关系，收敛成一条明确的统一入口流程。
+
+### V2
+
+第二轮迭代的重点是让一次运行结束后更容易理解结果、检查状态和定位产物。
+
+主要变化包括：
+
+- 统一输出到 `outputs/<mode>/<run_id>/`
+- 将最终产物、恢复快照、调试信息分开存放
+- 为每个输入模式增加 `outputs/<mode>/latest.json` 便于快速定位最近一次运行
+- 将 `summary.json` 固定为运行级总入口
+
+当前顶层工作流的输出布局就是围绕这一版建立的。
+
+### V2.1 微信发布图片修复
+
+这一轮迭代重点处理的是微信草稿发布中的报告视觉还原问题。
+
+主要变化包括：
+
+- 优化从报告到微信草稿的转换链路，让图表和视觉内容尽可能被保留下来
+- 降低富文本报告在发布过程中退化成纯文本或纯表格的概率
+- 让最终草稿更接近原始 HTML 报告的阅读体验
+
+这次修复的目标不只是“让图片出现”，而是让微信端看到的内容结构更接近生成报告本身。
+
+### V2.2 微信草稿长度约束与发布修复
+
+这一轮迭代重点解决的是：在微信网页端看起来没有超限，但调用微信草稿 API 时仍被拒绝的问题。
+
+主要变化包括：
+
+- 将标题、作者、摘要三类约束在写作、归一化、交付链路中统一起来
+- 修正微信草稿请求体的发送方式，显式使用 UTF-8 JSON 正文
+- 保留 `45003` 和 `45004` 场景下的重试与审计元数据
+- 降低“本地看起来可发布，但真正创建草稿时失败”的概率
+
+这一版之后，微信相关的生成约束与发布约束在端到端路径上更加一致。
+
+## 测试
+
+主测试命令：
+
+```bash
+python -m pytest tests
+```
+
+如果只想先验证顶层编排主流程，可以先跑：
+
+```bash
+python -m pytest tests/test_clawradar_automation.py
+```
+
+## 许可证
+
+GPL-2.0
+

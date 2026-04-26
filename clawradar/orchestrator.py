@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set
-from uuid import uuid4
 
 from .contracts import (
     IngestRunStatus,
@@ -109,8 +108,8 @@ def _utc_timestamp() -> str:
 
 
 
-def _slugify_timestamp(value: str) -> str:
-    return value.replace(":", "-").replace(".", "-")
+def _shanghai_run_id() -> str:
+    return datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d_%H%M")
 
 
 
@@ -130,28 +129,38 @@ def _write_json(path: Path, payload: Any) -> None:
 
 
 
-def _resolve_output_context(payload: Dict[str, Any], runs_root: Optional[Path]) -> Dict[str, str]:
+def _resolve_output_context(payload: Dict[str, Any], runs_root: Optional[Path], *, mode: str) -> Dict[str, str]:
     request_id = str(payload.get("request_id") or "openclaw-run").strip() or "openclaw-run"
+    run_id = _shanghai_run_id()
+    started_at = _utc_timestamp()
     base_root = Path(runs_root or DEFAULT_RUNS_ROOT).resolve()
-    run_slug = _slugify_timestamp(_utc_timestamp()) + f"-{uuid4().hex[:8]}"
-    output_root = (base_root / request_id / run_slug).resolve()
-    meta_root = (output_root / "meta").resolve()
-    stages_root = (output_root / "stages").resolve()
+    mode_root = (base_root / mode).resolve()
+    output_root = (mode_root / run_id).resolve()
     reports_root = (output_root / "reports").resolve()
-    events_root = (output_root / "events").resolve()
+    recovery_root = (output_root / "recovery").resolve()
+    debug_root = (output_root / "debug").resolve()
+    summary_path = (output_root / "summary.json").resolve()
+    latest_path = (mode_root / "latest.json").resolve()
+    recovery_summary_path = (recovery_root / "recovery_summary.json").resolve()
 
-    for path in (output_root, meta_root, stages_root, reports_root, events_root):
+    for path in (mode_root, output_root, reports_root, recovery_root, debug_root):
         path.mkdir(parents=True, exist_ok=True)
 
     return {
         "base_root": base_root.as_posix(),
+        "mode_root": mode_root.as_posix(),
         "output_root": output_root.as_posix(),
-        "meta_root": meta_root.as_posix(),
-        "stages_root": stages_root.as_posix(),
         "reports_root": reports_root.as_posix(),
-        "events_root": events_root.as_posix(),
+        "recovery_root": recovery_root.as_posix(),
+        "debug_root": debug_root.as_posix(),
+        "summary_path": summary_path.as_posix(),
+        "latest_path": latest_path.as_posix(),
+        "recovery_summary_path": recovery_summary_path.as_posix(),
+        "started_at": started_at,
         "workspace_relative_output_root": _relative_path(output_root) or output_root.as_posix(),
-        "run_slug": run_slug,
+        "run_id": run_id,
+        "mode": mode,
+        "request_id": request_id,
     }
 
 
@@ -1181,43 +1190,92 @@ def _persist_run_outputs(
         return {}
 
     output_root_path = Path(output_root)
+    debug_root = Path(output_context.get("debug_root") or (output_root_path / "debug"))
+    reports_root = Path(output_context.get("reports_root") or (output_root_path / "reports"))
+    recovery_root = Path(output_context.get("recovery_root") or (output_root_path / "recovery"))
+    summary_path = Path(output_context.get("summary_path") or (output_root_path / "summary.json"))
+    latest_path = Path(output_context.get("latest_path") or (output_root_path.parent / "latest.json"))
+    recovery_summary_path = Path(output_context.get("recovery_summary_path") or (recovery_root / "recovery_summary.json"))
 
     manifest: Dict[str, str] = {}
 
-    def persist(relative_path: str, payload_obj: Any) -> None:
-        path = output_root_path / relative_path
+    def persist(path: Path, payload_obj: Any) -> None:
         _write_json(path, payload_obj)
-        manifest[relative_path] = _relative_path(path) or str(path.resolve().as_posix())
+        manifest[_relative_path(path) or path.resolve().as_posix()] = _relative_path(path) or path.resolve().as_posix()
 
-    persist("meta/request_payload.json", deepcopy(payload))
-    persist("meta/entry_resolution.json", deepcopy(entry_resolution) if isinstance(entry_resolution, dict) else None)
-    persist("meta/stage_statuses.json", deepcopy(stage_statuses))
-    persist("meta/artifact_summary.json", deepcopy(artifact_summary))
-    persist("meta/run_summary.json", deepcopy(run_summary))
-    persist("meta/errors.json", deepcopy(errors))
-    persist("meta/output_context.json", deepcopy(output_context))
+    debug_payload = {
+        "input": deepcopy(payload),
+        "entry_resolution": deepcopy(entry_resolution) if isinstance(entry_resolution, dict) else None,
+        "stage_statuses": deepcopy(stage_statuses),
+        "artifact_summary": deepcopy(artifact_summary),
+        "errors": deepcopy(errors),
+        "output_context": deepcopy(output_context),
+        "crawl": deepcopy(crawl_results) if isinstance(crawl_results, dict) else None,
+        "topics": deepcopy(topic_cards),
+        "ingest": deepcopy(normalized_events),
+        "scored_events": deepcopy(scored_events),
+        "score": deepcopy(score_results) if isinstance(score_results, dict) else None,
+        "content_bundles": deepcopy(content_bundles),
+        "writer_receipts": deepcopy((stage_results.get("write") or {}).get("writer_receipts") or []),
+        "write": deepcopy(stage_results.get("write")) if isinstance(stage_results.get("write"), dict) else None,
+        "delivery_receipt": deepcopy(delivery_receipt) if isinstance(delivery_receipt, dict) else None,
+        "deliver": deepcopy(delivery_result) if isinstance(delivery_result, dict) else None,
+    }
+
+    persist(debug_root / "input.json", debug_payload["input"])
+    if debug_payload["entry_resolution"] is not None:
+        persist(debug_root / "entry_resolution.json", debug_payload["entry_resolution"])
+    persist(debug_root / "stage_statuses.json", debug_payload["stage_statuses"])
+    persist(debug_root / "artifact_summary.json", debug_payload["artifact_summary"])
+    persist(debug_root / "errors.json", debug_payload["errors"])
+    persist(debug_root / "output_context.json", debug_payload["output_context"])
+    persist(debug_root / "crawl.json", debug_payload["crawl"])
+    persist(debug_root / "topics.json", debug_payload["topics"])
+    persist(debug_root / "ingest.json", debug_payload["ingest"])
+    persist(debug_root / "scored_events.json", debug_payload["scored_events"])
+    persist(debug_root / "score.json", debug_payload["score"])
+    persist(debug_root / "content_bundles.json", debug_payload["content_bundles"])
+    persist(debug_root / "writer_receipts.json", debug_payload["writer_receipts"])
+    persist(debug_root / "write.json", debug_payload["write"])
+    persist(debug_root / "delivery_receipt.json", debug_payload["delivery_receipt"])
+    persist(debug_root / "deliver.json", debug_payload["deliver"])
+    persist(summary_path, deepcopy(run_summary))
+    persist(recovery_summary_path, {
+        "recovery_used": bool((run_summary or {}).get("recovery_used")),
+        "failed_event_count": int((run_summary or {}).get("failed_event_count", 0) or 0),
+        "recovered_event_count": int((run_summary or {}).get("recovered_event_count", 0) or 0),
+        "failed_event_ids": list((run_summary or {}).get("failed_event_ids") or []),
+        "recovered_event_ids": list((run_summary or {}).get("recovered_event_ids") or []),
+        "final_status": str((run_summary or {}).get("status") or "").strip() or None,
+    })
+    persist(latest_path, {
+        "mode": output_context.get("mode"),
+        "latest_run": output_context.get("run_id"),
+        "status": run_summary.get("status"),
+        "summary_path": f"{output_context.get('run_id')}/summary.json",
+    })
 
     if isinstance(crawl_results, dict):
-        persist("stages/crawl/crawl_results.json", deepcopy(crawl_results))
+        persist(reports_root / "crawl_results.json", deepcopy(crawl_results))
     if topic_cards:
-        persist("stages/topics/topic_cards.json", deepcopy(list(topic_cards)))
+        persist(reports_root / "topic_cards.json", deepcopy(list(topic_cards)))
     if normalized_events:
-        persist("stages/ingest/normalized_events.json", deepcopy(list(normalized_events)))
+        persist(reports_root / "normalized_events.json", deepcopy(list(normalized_events)))
     if scored_events:
-        persist("stages/score/scored_events.json", deepcopy(list(scored_events)))
+        persist(reports_root / "scored_events.json", deepcopy(list(scored_events)))
     if isinstance(score_results, dict):
-        persist("stages/score/score_results.json", deepcopy(score_results))
+        persist(reports_root / "score_results.json", deepcopy(score_results))
     if content_bundles:
-        persist("stages/write/content_bundles.json", deepcopy(list(content_bundles)))
+        persist(debug_root / "content_bundles.json", deepcopy(list(content_bundles)))
     write_stage = stage_results.get("write") if isinstance(stage_results.get("write"), dict) else None
     if isinstance(write_stage, dict):
         if isinstance(write_stage.get("writer_receipts"), list):
-            persist("stages/write/writer_receipts.json", deepcopy(write_stage.get("writer_receipts") or []))
-        persist("stages/write/write_result.json", deepcopy(write_stage))
+            persist(debug_root / "writer_receipts.json", deepcopy(write_stage.get("writer_receipts") or []))
+        persist(debug_root / "write.json", deepcopy(write_stage))
     if isinstance(delivery_receipt, dict):
-        persist("stages/deliver/delivery_receipt.json", deepcopy(delivery_receipt))
+        persist(debug_root / "delivery_receipt.json", deepcopy(delivery_receipt))
     if isinstance(delivery_result, dict):
-        persist("stages/deliver/delivery_result.json", deepcopy(delivery_result))
+        persist(debug_root / "deliver.json", deepcopy(delivery_result))
 
     return manifest
 
@@ -1329,14 +1387,27 @@ def _finalize_orchestration(
     )
 
     output_context = deepcopy(payload.get("output_context")) if isinstance(payload.get("output_context"), dict) else None
+    completed_at = _utc_timestamp()
     run_summary = {
+        "mode": (output_context or {}).get("mode") or execution_mode,
+        "run_id": (output_context or {}).get("run_id"),
+        "request_id": request_id,
+        "status": run_status,
         "final_stage": final_stage,
-        "run_status": run_status,
-        "decision_status": decision_status,
-        "processed_event_count": len(processed_event_ids),
-        "stage_statuses": deepcopy(stage_statuses),
-        "artifact_summary": deepcopy(artifact_summary),
-        "output_root": (output_context or {}).get("output_root"),
+        "started_at": (output_context or {}).get("started_at"),
+        "completed_at": completed_at,
+        "candidate_count": int(artifact_summary.get("crawl_candidate_count", 0) or 0),
+        "publish_ready_count": int(artifact_summary.get("publish_ready_count", 0) or 0),
+        "write_success_count": int(artifact_summary.get("content_bundle_count", 0) or 0),
+        "deliver_success_count": int(artifact_summary.get("delivered_count", 0) or 0),
+        "recovery_used": bool(
+            (deliver_result or {}).get("recovery_used")
+            or (write_result or {}).get("recovery_used")
+            or (score_result or {}).get("recovery_used")
+            or payload.get("recovery_used")
+        ),
+        "main_reports_path": "reports/",
+        "debug_path": "debug/",
     }
     stage_results = {
         "crawl": deepcopy(crawl_result) if isinstance(crawl_result, dict) else None,
@@ -1414,7 +1485,6 @@ def topic_radar_orchestrate(
     working_payload = deepcopy(payload)
     requested_event_ids = _extract_requested_event_ids(working_payload)
     working_payload["trigger_source"] = _normalize_trigger_source(working_payload)
-    working_payload["output_context"] = _resolve_output_context(working_payload, runs_root)
 
     try:
         resolved_mode = _normalize_mode(working_payload, execution_mode)
@@ -1473,6 +1543,12 @@ def topic_radar_orchestrate(
             ],
             requested_event_ids=requested_event_ids,
         )
+
+    working_payload["output_context"] = _resolve_output_context(
+        working_payload,
+        runs_root,
+        mode=entry_resolution["input"]["effective_mode"],
+    )
 
     if working_payload["trigger_source"] == OrchestratorTriggerSource.SINGLE_EVENT_RERUN.value:
         if not requested_event_ids:

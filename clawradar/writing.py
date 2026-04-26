@@ -18,6 +18,13 @@ from urllib.parse import urlparse
 from .scoring import ScoreDecisionStatus, ScoreRunStatus, ScoreValidationError, validate_score_payload
 
 
+MAX_WECHAT_TITLE_CHARS = 64
+MAX_WECHAT_TITLE_UTF8_BYTES = MAX_WECHAT_TITLE_CHARS * 4
+MAX_WECHAT_AUTHOR_CHARS = 8
+MAX_WECHAT_DIGEST_TEXT_UNITS = 120
+MAX_WECHAT_DIGEST_UTF8_BYTES = MAX_WECHAT_DIGEST_TEXT_UNITS * 4
+
+
 class WriteRunStatus(str, Enum):
     """阶段三 write 执行状态。"""
 
@@ -57,6 +64,277 @@ WRITE_REQUIRED_FIELDS: Tuple[str, ...] = (
     "scored_events",
 )
 
+MAX_TITLE_TEXT_CHARS = MAX_WECHAT_TITLE_CHARS
+TITLE_FALLBACK_TEXT = "OpenClaw Report"
+TITLE_COMPANY_SUFFIXES: Tuple[str, ...] = (
+    "集团股份有限公司",
+    "股份有限公司",
+    "控股有限公司",
+    "有限公司",
+    "集团公司",
+    "集团",
+    "控股",
+    "公司",
+)
+
+
+def _build_title_constraints() -> Dict[str, Any]:
+    return {
+        "channel": "wechat_draft",
+        "max_chars": MAX_TITLE_TEXT_CHARS,
+        "max_utf8_bytes": MAX_WECHAT_TITLE_UTF8_BYTES,
+        "rewrite_when_over_limit": True,
+        "allow_truncate_as_business_fallback": False,
+        "require_semantic_completeness": True,
+    }
+
+
+def _build_summary_constraints() -> Dict[str, Any]:
+    return {
+        "channel": "wechat_draft",
+        "max_chars": MAX_WECHAT_DIGEST_TEXT_UNITS,
+        "max_text_units": MAX_WECHAT_DIGEST_TEXT_UNITS,
+        "max_utf8_bytes": MAX_WECHAT_DIGEST_UTF8_BYTES,
+        "rewrite_when_over_limit": True,
+        "allow_truncate_as_business_fallback": False,
+        "require_semantic_completeness": True,
+        "require_plain_text": True,
+    }
+
+
+def _normalize_summary_text(text: Any) -> str:
+    return re.sub(r"\s+", " ", str(text or "")).strip(" \t\r\n：:｜|丨/／,，;；。！？!?-—–_")
+
+
+def _summary_candidates(text: Any) -> List[str]:
+    base = _normalize_summary_text(text)
+    if not base:
+        return []
+    candidates: List[str] = []
+    seen = set()
+
+    def add(value: Any) -> None:
+        normalized = _normalize_summary_text(value)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            candidates.append(normalized)
+
+    add(base)
+    for separator in ("；", "。", "，", ":", "："):
+        if separator in base:
+            add(base.split(separator, 1)[0])
+    return candidates
+
+
+def _regenerate_wechat_summary(
+    event_title: str,
+    top_fact_claim: str,
+    uncertainty_text: str,
+    *,
+    rewrite_feedback: Optional[Dict[str, Any]] = None,
+    fallback: str = "OpenClaw 摘要",
+) -> str:
+    max_bytes = MAX_WECHAT_DIGEST_UTF8_BYTES
+    max_chars = MAX_WECHAT_DIGEST_TEXT_UNITS
+    if isinstance(rewrite_feedback, dict):
+        try:
+            feedback_max_bytes = int(rewrite_feedback.get("maxUtf8Bytes") or 0)
+        except (TypeError, ValueError):
+            feedback_max_bytes = 0
+        if feedback_max_bytes > 0:
+            max_bytes = min(max_bytes, feedback_max_bytes)
+        try:
+            feedback_max_chars = int(
+                rewrite_feedback.get("maxChars") or rewrite_feedback.get("maxTextUnits") or 0
+            )
+        except (TypeError, ValueError):
+            feedback_max_chars = 0
+        if feedback_max_chars > 0:
+            max_chars = min(max_chars, feedback_max_chars)
+    candidate_groups = [
+        f"{event_title}，核心事实是{top_fact_claim}。",
+        f"{event_title}，核心事实是{top_fact_claim}，{uncertainty_text}。",
+        f"{event_title}。",
+        top_fact_claim,
+        fallback,
+    ]
+    for group in candidate_groups:
+        for candidate in _summary_candidates(group):
+            if _utf8_length(candidate) <= max_bytes and len(candidate) <= max_chars:
+                return candidate
+    normalized_fallback = _normalize_summary_text(fallback) or "OpenClaw 摘要"
+    return _truncate_text_units(
+        _truncate_utf8(normalized_fallback, max_bytes, "OpenClaw 摘要"),
+        max_chars,
+        "OpenClaw 摘要",
+    )
+
+
+def _utf8_length(text: str) -> int:
+    return len(str(text or "").encode("utf-8"))
+
+
+def _text_unit_length(text: Any) -> int:
+    return len(str(text or ""))
+
+
+def _truncate_text_units(text: str, max_units: int, fallback: str = "") -> str:
+    value = str(text or "").strip()
+    if not value:
+        value = fallback.strip()
+    if not value:
+        return ""
+    if _text_unit_length(value) <= max_units:
+        return value
+    truncated = value[:max_units].rstrip()
+    return truncated or _truncate_utf8(fallback.strip(), max_units, "")
+
+
+def _normalize_title_text(text: Any) -> str:
+    return re.sub(r"\s+", " ", str(text or "")).strip(" \t\r\n：:｜|丨/／,，;；。！？!?-—–_")
+
+
+def _strip_title_suffixes(text: str) -> str:
+    suffixes = (
+        "深度观察报告",
+        "深度观察",
+        "分析报告",
+        "观察报告",
+        "专题报告",
+        "舆情洞察报告",
+        "热点追踪",
+        "情况说明",
+        "详细说明",
+        "重大更新说明",
+        "报告标题",
+        "超长版本",
+    )
+    current = _normalize_title_text(text)
+    while current:
+        updated = current
+        for suffix in suffixes:
+            if updated.endswith(suffix) and len(updated) > len(suffix) + 2:
+                updated = _normalize_title_text(updated[: -len(suffix)])
+                break
+        if updated == current:
+            return current
+        current = updated
+    return ""
+
+
+def _title_candidates(text: Any, *, company: str = "") -> List[str]:
+    base = _normalize_title_text(text)
+    company_text = _normalize_title_text(company)
+    if not base:
+        return []
+
+    seeds = [base]
+    without_brackets = _normalize_title_text(
+        re.sub(r"（[^）]{0,30}）|\([^)]{0,30}\)|【[^】]{0,30}】|\[[^\]]{0,30}\]", "", base)
+    )
+    if without_brackets and without_brackets != base:
+        seeds.append(without_brackets)
+    if company_text and company_text not in base:
+        seeds.append(f"{company_text}：{base}")
+        if without_brackets and without_brackets != base:
+            seeds.append(f"{company_text}：{without_brackets}")
+
+    candidates: List[str] = []
+    seen = set()
+
+    def add(value: Any) -> None:
+        normalized = _normalize_title_text(value)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            candidates.append(normalized)
+
+    split_pattern = r"[：:｜|丨/／—\-–,，;；。！？!?]\s*"
+    leading_prefixes = ("关于", "聚焦", "发布", "推出", "上线", "披露", "回应", "宣布", "升级", "更新")
+
+    for seed in seeds:
+        normalized = _normalize_title_text(seed)
+        add(normalized)
+        no_ascii_tail = _normalize_title_text(
+            re.sub(r"(?:报告标题)?(?:超长版本)?[0-9A-Za-z]{4,}$", "", normalized)
+        )
+        trimmed = _strip_title_suffixes(no_ascii_tail or normalized)
+        add(trimmed)
+        core_source = trimmed or no_ascii_tail or normalized
+        if company_text:
+            without_company = _normalize_title_text(
+                re.sub(
+                    rf"^{re.escape(company_text)}(?:[：:｜|丨/／—\-–,，;；。！？!?]\s*)?",
+                    "",
+                    core_source,
+                )
+            )
+            add(without_company)
+            core_source = without_company or core_source
+        add(no_ascii_tail)
+        for prefix in leading_prefixes:
+            if core_source.startswith(prefix) and len(core_source) > len(prefix) + 4:
+                core_source = _normalize_title_text(core_source[len(prefix):])
+                add(core_source)
+        segments = [_normalize_title_text(part) for part in re.split(split_pattern, core_source or normalized) if _normalize_title_text(part)]
+        if segments:
+            add(segments[0])
+
+    return candidates
+
+
+def _strip_company_suffixes(text: str) -> str:
+    current = _normalize_title_text(text)
+    while current:
+        updated = current
+        for suffix in TITLE_COMPANY_SUFFIXES:
+            if updated.endswith(suffix) and len(updated) > len(suffix) + 1:
+                updated = _normalize_title_text(updated[: -len(suffix)])
+                break
+        if updated == current:
+            return current
+        current = updated
+    return ""
+
+
+def _iter_regenerated_title_candidates(text: Any, *, company: str = "", fallback: str = TITLE_FALLBACK_TEXT) -> List[str]:
+    candidates: List[str] = []
+    seen = set()
+
+    def add_candidate(value: Any) -> None:
+        normalized = _normalize_title_text(value)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            candidates.append(normalized)
+
+    for candidate in _title_candidates(text, company=company):
+        add_candidate(candidate)
+
+    normalized_company = _normalize_title_text(company)
+    stripped_company = _strip_company_suffixes(normalized_company)
+    for company_candidate in (stripped_company, normalized_company):
+        add_candidate(company_candidate)
+        if company_candidate:
+            add_candidate(f"{company_candidate}事件观察")
+            add_candidate(f"{company_candidate}舆情观察")
+
+    add_candidate(fallback)
+    return candidates
+
+
+def _regenerate_title(
+    text: str,
+    *,
+    max_chars: int = MAX_TITLE_TEXT_CHARS,
+    company: str = "",
+    fallback: str = TITLE_FALLBACK_TEXT,
+) -> str:
+    candidates = _iter_regenerated_title_candidates(text, company=company, fallback=fallback)
+    for candidate in candidates:
+        if len(candidate) <= max_chars:
+            return candidate
+    safe_fallback = _normalize_title_text(fallback) or TITLE_FALLBACK_TEXT
+    return safe_fallback[:max_chars].rstrip() or TITLE_FALLBACK_TEXT
+
 
 class WriteValidationError(ValueError):
     """write 输入校验失败。"""
@@ -86,6 +364,24 @@ def _to_string_list(value: Any) -> List[str]:
         return [str(item).strip() for item in value if str(item).strip()]
     text = str(value).strip()
     return [text] if text else []
+
+
+def _truncate_utf8(text: str, max_bytes: int, fallback: str = "") -> str:
+    value = str(text or "").strip()
+    if not value:
+        value = fallback.strip()
+    if not value:
+        return ""
+    encoded = value.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return value
+    truncated = encoded[:max_bytes]
+    while truncated:
+        try:
+            return truncated.decode("utf-8").rstrip()
+        except UnicodeDecodeError:
+            truncated = truncated[:-1]
+    return fallback.strip()[:max_bytes]
 
 
 def _normalize_write_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -203,8 +499,12 @@ def _build_evidence_packet(scored_event: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _build_title(scored_event: Dict[str, Any]) -> str:
-    company = str(scored_event.get("trace", {}).get("company") or "行业").strip() or "行业"
-    return f"{company}热点追踪：{str(scored_event.get('event_title') or '').strip()}"
+    company = _normalize_title_text(scored_event.get("trace", {}).get("company") or "")
+    event_title = _normalize_title_text(scored_event.get("event_title") or "")
+    preferred_title = event_title
+    if company and company not in event_title:
+        preferred_title = f"{company}：{event_title}"
+    return _regenerate_title(preferred_title, company=company, fallback=TITLE_FALLBACK_TEXT)
 
 
 def _build_outline(scored_event: Dict[str, Any], evidence_packet: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -257,17 +557,36 @@ def _build_draft(scored_event: Dict[str, Any], evidence_packet: Dict[str, Any], 
     }
 
 
-def _build_summary(scored_event: Dict[str, Any], evidence_packet: Dict[str, Any], *, regenerated: bool = False) -> Dict[str, Any]:
+def _build_summary(
+    scored_event: Dict[str, Any],
+    evidence_packet: Dict[str, Any],
+    *,
+    regenerated: bool = False,
+    rewrite_feedback: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     top_fact = evidence_packet["source_support"][0]
     prefix = "摘要重生" if regenerated else "摘要"
-    text = (
-        f"{prefix}：{str(scored_event.get('event_title') or '').strip()}。"
-        f"已确认事实包括“{top_fact['claim']}”，来源为 {top_fact['source_url']}；"
-        f"使用时需保留提示：{evidence_packet['uncertainty_markers'][0]}"
+    event_title = str(scored_event.get("event_title") or "").strip()
+    top_fact_claim = str(top_fact.get("claim") or "").strip()
+    uncertainty_text = str(evidence_packet["uncertainty_markers"][0] or "").strip()
+    generic_text = (
+        f"{prefix}：{event_title}。"
+        f"已确认事实包括“{top_fact_claim}”，来源为 {top_fact['source_url']}；"
+        f"使用时需保留提示：{uncertainty_text}"
+    )
+    wechat_text = _regenerate_wechat_summary(
+        event_title,
+        top_fact_claim,
+        uncertainty_text,
+        rewrite_feedback=rewrite_feedback,
+        fallback=event_title or top_fact_claim or "OpenClaw 摘要",
     )
     return {
         "version": 2 if regenerated else 1,
-        "text": text,
+        "text": generic_text,
+        "channel_variants": {
+            "wechat": wechat_text,
+        },
         "source_refs": [item["fact_id"] for item in evidence_packet["source_support"][:2] if item.get("fact_id")],
         "uncertainty_markers": list(evidence_packet["uncertainty_markers"]),
     }
@@ -292,7 +611,12 @@ def _build_content_bundle(scored_event: Dict[str, Any]) -> Dict[str, Any]:
 
 def _rewrite_content_bundle(content_bundle: Dict[str, Any], scored_event: Dict[str, Any]) -> Dict[str, Any]:
     evidence_packet = content_bundle["evidence_packet"]
-    title_text = f"改写版｜{content_bundle['title']['text']}"
+    company = _normalize_title_text(scored_event.get("trace", {}).get("company") or "")
+    title_text = _regenerate_title(
+        str(content_bundle.get("title", {}).get("text") or _build_title(scored_event)).strip(),
+        company=company,
+        fallback=TITLE_FALLBACK_TEXT,
+    )
     draft = _build_draft(scored_event, evidence_packet, title_text, version_note="改写稿")
     draft["version"] = int(content_bundle.get("draft", {}).get("version", 1)) + 1
     return {
@@ -305,10 +629,15 @@ def _rewrite_content_bundle(content_bundle: Dict[str, Any], scored_event: Dict[s
 
 def _regenerate_summary(content_bundle: Dict[str, Any], scored_event: Dict[str, Any]) -> Dict[str, Any]:
     evidence_packet = content_bundle["evidence_packet"]
+    summary_rewrite_feedback = (
+        deepcopy(content_bundle.get("summary_rewrite_feedback"))
+        if isinstance(content_bundle.get("summary_rewrite_feedback"), dict)
+        else None
+    )
     return {
         **content_bundle,
         "content_status": "summary_regenerated",
-        "summary": _build_summary(scored_event, evidence_packet, regenerated=True),
+        "summary": _build_summary(scored_event, evidence_packet, regenerated=True, rewrite_feedback=summary_rewrite_feedback),
     }
 
 
@@ -414,7 +743,7 @@ def _json_dump(value: Any) -> str:
 
 
 def _html_to_text(html_content: str) -> str:
-    without_scripts = re.sub(r"<(script|style)[^>]*>[\s\S]*?</\\1>", " ", html_content, flags=re.IGNORECASE)
+    without_scripts = re.sub(r"<(script|style)[^>]*>[\s\S]*?</\1>", " ", html_content, flags=re.IGNORECASE)
     text = re.sub(r"<[^>]+>", " ", without_scripts)
     text = unescape(text)
     return re.sub(r"\s+", " ", text).strip()
@@ -435,6 +764,41 @@ def _extract_report_preview(report_text: str, *, max_length: int = 1200) -> str:
     return preview
 
 
+def _extract_report_summary_pack(generation_result: Dict[str, Any]) -> Dict[str, str]:
+    def clean_text(value: Any) -> str:
+        if isinstance(value, dict):
+            return ""
+        if isinstance(value, list):
+            return " ".join(str(item).strip() for item in value if str(item).strip())
+        return re.sub(r"\s+", " ", str(value or "")).strip()
+
+    metadata = generation_result.get("report_metadata") if isinstance(generation_result.get("report_metadata"), dict) else {}
+    summary_pack = metadata.get("summaryPack") if isinstance(metadata.get("summaryPack"), dict) else {}
+    if not summary_pack:
+        summary_pack = generation_result.get("summaryPack") if isinstance(generation_result.get("summaryPack"), dict) else {}
+
+    generic = clean_text(summary_pack.get("generic"))
+    short = clean_text(summary_pack.get("short"))
+    wechat = clean_text(summary_pack.get("wechat"))
+    source_hint = clean_text(summary_pack.get("sourceHint"))
+
+    if not generic:
+        generic = clean_text((summary_pack or {}).get("summary"))
+    if not short:
+        short = generic
+    if not wechat:
+        wechat = short or generic
+
+    if generic or short or wechat:
+        return {
+            "generic": generic,
+            "short": short,
+            "wechat": wechat,
+            "sourceHint": source_hint,
+        }
+    return {}
+
+
 def _build_external_writer_request(
     payload: Dict[str, Any],
     scored_event: Dict[str, Any],
@@ -444,6 +808,8 @@ def _build_external_writer_request(
 ) -> Dict[str, Any]:
     report_profile = deepcopy(payload.get("report_profile")) if isinstance(payload.get("report_profile"), dict) else {}
     writing_brief = deepcopy(payload.get("writing_brief")) if isinstance(payload.get("writing_brief"), dict) else {}
+    title_constraints = _build_title_constraints()
+    summary_constraints = _build_summary_constraints()
     custom_template = str(
         report_profile.get("custom_template")
         or payload.get("custom_template")
@@ -456,6 +822,34 @@ def _build_external_writer_request(
         or scored_event.get("event_id")
         or "OpenClaw Report"
     ).strip()
+    existing_profile_constraints = (
+        report_profile.get("title_constraints") if isinstance(report_profile.get("title_constraints"), dict) else {}
+    )
+    report_profile["title_constraints"] = {**existing_profile_constraints, **title_constraints}
+    report_profile["summary_constraints"] = {
+        **(
+            report_profile.get("summary_constraints")
+            if isinstance(report_profile.get("summary_constraints"), dict)
+            else {}
+        ),
+        **summary_constraints,
+    }
+    writing_brief["title_constraints"] = deepcopy(title_constraints)
+    writing_brief["summary_constraints"] = deepcopy(summary_constraints)
+    writing_brief["title_instruction"] = "微信公众号标题超长时必须直接重写，不得依赖下游裁剪兜底。"
+    writing_brief["summary_instruction"] = "微信公众号摘要超长时必须直接重写为更短的完整纯文本摘要，不得依赖下游截断兜底。"
+    if operation == WriteOperation.REGENERATE_SUMMARY.value and isinstance(payload.get("content_bundle"), dict):
+        existing_summary = payload["content_bundle"].get("summary") if isinstance(payload["content_bundle"].get("summary"), dict) else {}
+        existing_channel_variants = existing_summary.get("channel_variants") if isinstance(existing_summary.get("channel_variants"), dict) else {}
+        summary_rewrite_feedback = payload.get("summary_rewrite_feedback") if isinstance(payload.get("summary_rewrite_feedback"), dict) else {}
+        if summary_rewrite_feedback:
+            writing_brief["summary_rewrite_feedback"] = deepcopy(summary_rewrite_feedback)
+            report_profile["summary_rewrite_feedback"] = deepcopy(summary_rewrite_feedback)
+        if existing_summary:
+            writing_brief["existing_summary"] = {
+                "generic": str(existing_summary.get("text") or "").strip(),
+                "wechat": str(existing_channel_variants.get("wechat") or existing_summary.get("text") or "").strip(),
+            }
     return {
         "event_id": str(scored_event.get("event_id") or "").strip(),
         "query": query,
@@ -522,16 +916,43 @@ def _build_external_writer_bundle(
     *,
     operation: str,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    title_text = str(
-        generation_result.get("report_title")
-        or write_request.get("query")
-        or _build_title(scored_event)
-    ).strip()
+    company = _normalize_title_text(scored_event.get("trace", {}).get("company") or "")
+    title_text = _regenerate_title(
+        str(
+            generation_result.get("report_title")
+            or write_request.get("query")
+            or _build_title(scored_event)
+        ).strip(),
+        company=company,
+        fallback=TITLE_FALLBACK_TEXT,
+    )
     outline = _build_outline(scored_event, evidence_packet)
     report_text = _html_to_text(str(generation_result.get("html_content") or "").strip())
     report_preview = _extract_report_preview(report_text) or f"原项目 ReportEngine 已生成报告：{title_text}"
+    report_summary_pack = _extract_report_summary_pack(generation_result)
+    summary_text = report_summary_pack.get("generic") or f"原项目 ReportEngine 已生成报告：{report_preview[:180]}" + ("..." if len(report_preview) > 180 else "")
+    wechat_summary_text = report_summary_pack.get("wechat") or summary_text
+    summary_source_hint = report_summary_pack.get("sourceHint") or ""
     source_refs = [item["fact_id"] for item in evidence_packet["source_support"] if item.get("fact_id")]
     uncertainty_markers = list(evidence_packet["uncertainty_markers"])
+    summary_rewrite_feedback = write_request.get("writing_brief", {}).get("summary_rewrite_feedback") if isinstance(write_request.get("writing_brief"), dict) else None
+    if operation == WriteOperation.REGENERATE_SUMMARY.value:
+        top_fact_claim = str((evidence_packet.get("source_support") or [{}])[0].get("claim") or "").strip()
+        uncertainty_text = str((uncertainty_markers or [""])[0] or "").strip()
+        if summary_text:
+            summary_text = _normalize_summary_text(summary_text)
+        if wechat_summary_text:
+            wechat_summary_text = _regenerate_wechat_summary(
+                title_text or write_request.get("query") or str(scored_event.get("event_title") or "").strip(),
+                top_fact_claim,
+                uncertainty_text,
+                rewrite_feedback=summary_rewrite_feedback if isinstance(summary_rewrite_feedback, dict) else None,
+                fallback=_normalize_summary_text(wechat_summary_text) or _normalize_summary_text(summary_text) or title_text,
+            )
+        if not summary_text:
+            summary_text = _normalize_summary_text(wechat_summary_text) or title_text
+        if not summary_source_hint:
+            summary_source_hint = "summaryPack.wechat"
     writer_receipt = {
         "event_id": str(scored_event.get("event_id") or "").strip(),
         "executor": WriteExecutor.EXTERNAL_WRITER.value,
@@ -562,7 +983,11 @@ def _build_external_writer_bundle(
         },
         "summary": {
             "version": 1,
-            "text": f"原项目 ReportEngine 已生成报告：{report_preview[:180]}" + ("..." if len(report_preview) > 180 else ""),
+            "text": summary_text,
+            "channel_variants": {
+                "wechat": wechat_summary_text,
+            },
+            "source_hint": summary_source_hint,
             "source_refs": source_refs[:2],
             "uncertainty_markers": uncertainty_markers,
         },

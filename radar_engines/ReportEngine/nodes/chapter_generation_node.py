@@ -963,76 +963,72 @@ class ChapterGenerationNode(BaseNode):
             chapter: 章节JSON对象，会在原地被清理和规整。
         """
 
-        def walk(blocks: List[Dict[str, Any]] | None):
+        def walk(blocks: List[Dict[str, Any]] | None) -> List[Dict[str, Any]]:
             """递归检查并修复嵌套结构，保证每个block合法"""
             if not isinstance(blocks, list):
-                return
-            # 先过滤掉非字典类型的异常 block
-            valid_indices = []
-            for idx, block in enumerate(blocks):
-                if not isinstance(block, dict):
-                    # 尝试将字符串转换为 paragraph
-                    if isinstance(block, str) and block.strip():
-                        blocks[idx] = self._as_paragraph_block(block)
-                        valid_indices.append(idx)
-                        logger.warning(f"walk: 将字符串 block 转换为 paragraph")
-                    elif isinstance(block, list):
-                        # 尝试提取列表中的有效字典
-                        for item in block:
-                            if isinstance(item, dict):
-                                self._ensure_block_type(item)
-                                blocks[idx] = item
-                                valid_indices.append(idx)
-                                logger.warning(f"walk: 从列表中提取字典 block")
-                                break
-                        else:
-                            logger.warning(f"walk: 跳过无效的列表 block: {block}")
+                return []
+
+            sanitized_blocks: List[Dict[str, Any]] = []
+            for raw_block in blocks:
+                candidates: List[Dict[str, Any]] = []
+                if isinstance(raw_block, dict):
+                    candidates.append(raw_block)
+                elif isinstance(raw_block, str) and raw_block.strip():
+                    logger.warning("walk: 将字符串 block 转换为 paragraph")
+                    candidates.append(self._as_paragraph_block(raw_block))
+                elif isinstance(raw_block, list):
+                    for item in raw_block:
+                        if isinstance(item, dict):
+                            self._ensure_block_type(item)
+                            logger.warning("walk: 从列表中提取字典 block")
+                            candidates.append(item)
+                            break
                     else:
-                        logger.warning(f"walk: 跳过无效的 block（类型: {type(block).__name__}）")
+                        logger.warning(f"walk: 跳过无效的列表 block: {raw_block}")
                 else:
-                    valid_indices.append(idx)
+                    logger.warning(f"walk: 跳过无效的 block（类型: {type(raw_block).__name__}）")
 
-            for idx in valid_indices:
-                block = blocks[idx]
-                if not isinstance(block, dict):
-                    continue
-                self._ensure_block_type(block)
-                self._sanitize_block_content(block)
-                block_type = block.get("type")
-                if block_type == "list":
-                    # 自动修复 listType：确保是合法值
-                    self._normalize_list_type(block)
-                    items = block.get("items")
-                    normalized = self._normalize_list_items(items)
-                    if normalized:
-                        block["items"] = normalized
-                    for entry in block.get("items", []):
-                        walk(entry)
-                elif block_type in {"callout", "blockquote", "engineQuote"}:
-                    walk(block.get("blocks"))
-                elif block_type == "table":
-                    for row in block.get("rows", []):
-                        if not isinstance(row, dict):
-                            continue
-                        cells = row.get("cells") or []
-                        for cell in cells:
-                            if not isinstance(cell, dict):
+                for block in candidates:
+                    self._ensure_block_type(block)
+                    self._sanitize_block_content(block)
+                    block_type = block.get("type")
+                    if block_type == "list":
+                        self._normalize_list_type(block)
+                        block["items"] = self._normalize_list_items(block.get("items"))
+                        lifted_blocks = self._repair_list_block(block)
+                        block["items"] = [
+                            entry
+                            for entry in (walk(entry) for entry in block.get("items", []))
+                            if entry
+                        ]
+                        if block.get("items"):
+                            sanitized_blocks.append(block)
+                        sanitized_blocks.extend(walk(lifted_blocks))
+                    elif block_type in {"callout", "blockquote", "engineQuote"}:
+                        block["blocks"] = walk(block.get("blocks"))
+                        sanitized_blocks.append(block)
+                    elif block_type == "table":
+                        for row in block.get("rows", []):
+                            if not isinstance(row, dict):
                                 continue
-                            walk(cell.get("blocks"))
-                elif block_type == "widget":
-                    self._normalize_widget_block(block)
-                else:
-                    nested = block.get("blocks")
-                    if isinstance(nested, list):
-                        walk(nested)
+                            cells = row.get("cells") or []
+                            for cell in cells:
+                                if not isinstance(cell, dict):
+                                    continue
+                                cell["blocks"] = walk(cell.get("blocks"))
+                        sanitized_blocks.append(block)
+                    elif block_type == "widget":
+                        self._normalize_widget_block(block)
+                        sanitized_blocks.append(block)
+                    else:
+                        nested = block.get("blocks")
+                        if isinstance(nested, list):
+                            block["blocks"] = walk(nested)
+                        sanitized_blocks.append(block)
 
-        walk(chapter.get("blocks"))
+            return sanitized_blocks
 
-        blocks = chapter.get("blocks")
-        if isinstance(blocks, list):
-            # 在合并前先过滤掉所有非字典类型的 block
-            filtered_blocks = [b for b in blocks if isinstance(b, dict)]
-            chapter["blocks"] = self._merge_fragment_sequences(filtered_blocks)
+        chapter["blocks"] = self._merge_fragment_sequences(walk(chapter.get("blocks")))
 
     def _ensure_content_density(self, chapter: Dict[str, Any]):
         """
@@ -1947,25 +1943,72 @@ class ChapterGenerationNode(BaseNode):
             result.append([item])
             return result
         if isinstance(item, list):
-            dicts = [elem for elem in item if isinstance(elem, dict)]
-            if dicts:
-                for elem in dicts:
-                    self._ensure_block_type(elem)
-                result.append(dicts)
+            current_entry: List[Dict[str, Any]] = []
             for elem in item:
-                if isinstance(elem, list):
+                if isinstance(elem, dict):
+                    self._ensure_block_type(elem)
+                    current_entry.append(elem)
+                elif isinstance(elem, list):
+                    if current_entry:
+                        result.append(current_entry)
+                        current_entry = []
                     result.extend(self._coerce_list_item(elem))
-                elif isinstance(elem, dict):
-                    continue
                 elif isinstance(elem, str):
-                    result.append([self._as_paragraph_block(elem)])
+                    current_entry.append(self._as_paragraph_block(elem))
                 elif isinstance(elem, (int, float)):
-                    result.append([self._as_paragraph_block(str(elem))])
+                    current_entry.append(self._as_paragraph_block(str(elem)))
+            if current_entry:
+                result.append(current_entry)
         elif isinstance(item, str):
             result.append([self._as_paragraph_block(item)])
         elif isinstance(item, (int, float)):
             result.append([self._as_paragraph_block(str(item))])
         return result
+
+    _LIST_ITEM_BOUNDARY_TYPES = {"heading", "hr", "list"}
+
+    def _repair_list_block(self, block: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """将错误混入 list item 的章节级 block 提升回当前列表之后。"""
+        items = block.get("items")
+        if not isinstance(items, list):
+            block["items"] = []
+            return []
+
+        repaired_items: List[List[Dict[str, Any]]] = []
+        lifted_blocks: List[Dict[str, Any]] = []
+        boundary_hit = False
+
+        for item in items:
+            if not isinstance(item, list):
+                continue
+            if boundary_hit:
+                lifted_blocks.extend(item)
+                continue
+
+            retained, lifted = self._split_list_item_blocks(item)
+            if retained:
+                repaired_items.append(retained)
+            if lifted:
+                boundary_hit = True
+                lifted_blocks.extend(lifted)
+
+        block["items"] = repaired_items
+        return lifted_blocks
+
+    def _split_list_item_blocks(
+        self,
+        item_blocks: List[Dict[str, Any]],
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """按章节边界拆分单个 list item。"""
+        retained: List[Dict[str, Any]] = []
+        for index, sub_block in enumerate(item_blocks):
+            if not isinstance(sub_block, dict):
+                continue
+            self._ensure_block_type(sub_block)
+            if sub_block.get("type") in self._LIST_ITEM_BOUNDARY_TYPES:
+                return retained, item_blocks[index:]
+            retained.append(sub_block)
+        return retained, []
 
     def _normalize_widget_block(self, block: Dict[str, Any]):
         """确保widget具备顶层data或dataRef"""

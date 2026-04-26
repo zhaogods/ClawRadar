@@ -11,6 +11,8 @@ from clawradar.delivery import (
     build_feishu_delivery_message,
     topic_radar_deliver,
 )
+from clawradar.writing import MAX_WECHAT_DIGEST_TEXT_UNITS, MAX_WECHAT_DIGEST_UTF8_BYTES
+from third_party.wechat_publisher.publisher import WeChatDraftUploadError, WeChatPublisher
 
 
 class ClawRadarDeliveryTestCase(unittest.TestCase):
@@ -242,6 +244,25 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
         self.assertEqual(rejection["errors"][0]["code"], "delivery_target_required")
         self.assertEqual(rejection["delivery_receipt"]["events"][0]["failure_info"]["code"], "delivery_target_required")
 
+    def test_wechat_loader_imports_real_third_party_publisher_class(self):
+        from clawradar.publishers.wechat import service as wechat_service
+
+        wechat_service._load_wechat_publisher_class.cache_clear()
+        try:
+            publisher_class = wechat_service._load_wechat_publisher_class()
+        finally:
+            wechat_service._load_wechat_publisher_class.cache_clear()
+
+        self.assertEqual(publisher_class.__name__, "WeChatPublisher")
+        publisher = publisher_class("wx-test-appid", "wx-test-secret")
+        for method_name in (
+            "get_access_token",
+            "upload_image",
+            "upload_default_cover",
+            "upload_draft",
+        ):
+            self.assertTrue(callable(getattr(publisher, method_name, None)))
+
     def test_wechat_channel_uses_channel_specific_message_file(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
@@ -258,7 +279,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
         channel_env = Path("clawradar/publishers/wechat/.env")
         original_env = channel_env.read_text(encoding="utf-8") if channel_env.exists() else None
         channel_env.write_text("WECHAT_APPID=wx-test-appid\nWECHAT_SECRET=wx-test-secret\nWECHAT_AUTHOR=ClawRadar\n", encoding="utf-8")
-
+        payload["content_bundle"]["title"]["text"] = "企业级安全治理平台发布"
 
         class FakePublisher:
             def __init__(self, appid, secret):
@@ -276,6 +297,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 return "cover-media-id"
 
             def upload_draft(self, **kwargs):
+                FakePublisher.last_upload = kwargs
                 return "wechat-media-id"
 
         try:
@@ -304,6 +326,8 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
         self.assertEqual(result["delivery_receipt"]["events"][0]["status"], "delivered")
         self.assertEqual(result["delivery_receipt"]["events"][0]["failure_info"], None)
         self.assertEqual(FakePublisher.last_init, {"appid": "wx-test-appid", "secret": "wx-test-secret"})
+        self.assertEqual(FakePublisher.last_upload["title"], "企业级安全治理平台发布")
+        self.assertLessEqual(len(FakePublisher.last_upload["title"]), 64)
 
         archived_payload = json.loads(Path(result["delivery_receipt"]["events"][0]["payload_path"]).read_text(encoding="utf-8"))
         wechat_options = archived_payload["entry_options"]["delivery"]["wechat"]
@@ -312,7 +336,124 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
         self.assertNotIn("WECHAT_APPID", archived_payload)
         self.assertNotIn("WECHAT_SECRET", archived_payload)
 
-    def test_wechat_channel_simplifies_report_html_for_wechat_draft(self):
+    def test_wechat_channel_normalizes_title_author_and_digest_before_upload(self):
+        payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
+        payload["delivery_channel"] = "wechat"
+        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["author"] = "超长作者名甲乙丙丁戊己庚辛壬癸作者"
+        payload["content_bundle"]["title"]["text"] = "这是一个超过六十四个字符的微信公众号标题用于验证发布前归一化是否生效并确保新限制已正确放宽到平台最新规则"
+        payload["content_bundle"]["summary"] = {
+            "version": 1,
+            "text": "摘" * 150,
+            "channel_variants": {"wechat": "微" * 150},
+            "source_refs": [],
+            "uncertainty_markers": [],
+        }
+
+        tmpdir = self._workspace_tmpdir("delivery-wechat-normalize-")
+        channel_env = Path("clawradar/publishers/wechat/.env")
+        original_env = channel_env.read_text(encoding="utf-8") if channel_env.exists() else None
+        channel_env.write_text("WECHAT_APPID=wx-test-appid\nWECHAT_SECRET=wx-test-secret\n", encoding="utf-8")
+
+        class FakePublisher:
+            def __init__(self, appid, secret):
+                self.appid = appid
+                self.secret = secret
+
+            def get_access_token(self):
+                return "token-123"
+
+            def upload_default_cover(self, title=""):
+                FakePublisher.cover_title = title
+                return "cover-media-id"
+
+            def upload_draft(self, **kwargs):
+                FakePublisher.last_upload = kwargs
+                return "wechat-media-id"
+
+        try:
+            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+                from clawradar.publishers.wechat import service as wechat_service
+                wechat_service._channel_env.cache_clear()
+                result = topic_radar_deliver(
+                    payload,
+                    channel="wechat",
+                    target=payload["delivery_target"],
+                    delivery_time="2026-04-26T16:00:00Z",
+                    runs_root=Path(tmpdir),
+                )
+        finally:
+            from clawradar.publishers.wechat import service as wechat_service
+            wechat_service._channel_env.cache_clear()
+            if original_env is None:
+                if channel_env.exists():
+                    channel_env.unlink()
+            else:
+                channel_env.write_text(original_env, encoding="utf-8")
+
+        self._assert_protocol_fields(result)
+        self.assertEqual(result["run_status"], "completed")
+        self.assertEqual(FakePublisher.cover_title, FakePublisher.last_upload["title"])
+        self.assertLessEqual(len(FakePublisher.last_upload["title"]), 64)
+        self.assertLessEqual(len(FakePublisher.last_upload["author"]), 8)
+        self.assertLessEqual(len(FakePublisher.last_upload["digest"]), 120)
+        self.assertEqual(FakePublisher.last_upload["digest"], "微" * 120)
+
+        event_receipt = result["delivery_receipt"]["events"][0]
+        self.assertEqual(event_receipt["message_metadata"]["author"], FakePublisher.last_upload["author"])
+        self.assertEqual(event_receipt["message_metadata"]["final_attempted_title"], FakePublisher.last_upload["title"])
+        self.assertEqual(event_receipt["message_metadata"]["final_attempted_digest"], FakePublisher.last_upload["digest"])
+
+    def test_wechat_channel_reports_token_failure_in_chinese(self):
+        payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
+        payload["delivery_channel"] = "wechat"
+        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        tmpdir = self._workspace_tmpdir("delivery-wechat-token-failure-")
+        channel_env = Path("clawradar/publishers/wechat/.env")
+        original_env = channel_env.read_text(encoding="utf-8") if channel_env.exists() else None
+        channel_env.write_text("WECHAT_APPID=wx-test-appid\nWECHAT_SECRET=wx-test-secret\nWECHAT_AUTHOR=ClawRadar\n", encoding="utf-8")
+
+        class FakePublisher:
+            def __init__(self, appid, secret):
+                self.appid = appid
+                self.secret = secret
+                self.last_error_message = "获取微信 access_token 失败：errcode=40164，errmsg=invalid ip not in whitelist。"
+
+            def get_access_token(self):
+                return None
+
+        try:
+            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+                from clawradar.publishers.wechat import service as wechat_service
+                wechat_service._channel_env.cache_clear()
+                result = topic_radar_deliver(
+                    payload,
+                    channel="wechat",
+                    target=payload["delivery_target"],
+                    delivery_time="2026-04-09T12:11:00Z",
+                    runs_root=Path(tmpdir),
+                )
+        finally:
+            from clawradar.publishers.wechat import service as wechat_service
+            wechat_service._channel_env.cache_clear()
+            if original_env is None:
+                if channel_env.exists():
+                    channel_env.unlink()
+            else:
+                channel_env.write_text(original_env, encoding="utf-8")
+
+        self._assert_protocol_fields(result)
+        self.assertEqual(result["run_status"], "delivery_failed")
+        self.assertEqual(result["errors"][0]["code"], "delivery_channel_unavailable")
+        self.assertIn("获取微信 access_token 失败", result["errors"][0]["message"])
+        self.assertIn("40164", result["errors"][0]["message"])
+        self.assertIn("invalid ip not in whitelist", result["errors"][0]["message"])
+        self.assertNotIn("IP 白名单", result["errors"][0]["message"])
+        self.assertIn("获取微信 access_token 失败", result["delivery_receipt"]["events"][0]["failure_info"]["message"])
+        self.assertIn("invalid ip not in whitelist", result["delivery_receipt"]["events"][0]["failure_info"]["message"])
+
+
+    def test_wechat_channel_prefers_report_html_over_dirty_draft_markdown_with_tables_and_lists(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
         payload["delivery_target"] = "wechat://draft-box/openclaw-review"
@@ -609,16 +750,17 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
 
         try:
             with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
-                with patch("clawradar.publishers.wechat.image_handler.upload_wechat_article_image", return_value="https://mmbiz.qpic.cn/chart-real-image"):
-                    from clawradar.publishers.wechat import service as wechat_service
-                    wechat_service._channel_env.cache_clear()
-                    topic_radar_deliver(
-                        payload,
-                        channel="wechat",
-                        target=payload["delivery_target"],
-                        delivery_time="2026-04-09T12:15:00Z",
-                        runs_root=Path(tmpdir),
-                    )
+                with patch("clawradar.publishers.wechat.image_handler.render_chart_container_to_png", return_value=Path(tmpdir) / "chart.png"):
+                    with patch("clawradar.publishers.wechat.image_handler.upload_wechat_article_image", return_value="https://mmbiz.qpic.cn/chart-real-image"):
+                        from clawradar.publishers.wechat import service as wechat_service
+                        wechat_service._channel_env.cache_clear()
+                        topic_radar_deliver(
+                            payload,
+                            channel="wechat",
+                            target=payload["delivery_target"],
+                            delivery_time="2026-04-09T12:15:00Z",
+                            runs_root=Path(tmpdir),
+                        )
         finally:
             from clawradar.publishers.wechat import service as wechat_service
             wechat_service._channel_env.cache_clear()
@@ -709,6 +851,552 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
         self.assertNotIn("Chart.js", FakePublisher.last_upload["content"])
         self.assertNotIn("Drop me", FakePublisher.last_upload["content"])
 
+    def test_wechat_delivery_prefers_channel_specific_summary_variant(self):
+        payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
+        payload["delivery_channel"] = "wechat"
+        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["content_bundle"]["summary"] = {
+            "version": 1,
+            "text": "通用摘要文本。",
+            "channel_variants": {"wechat": "微信专用摘要文本。"},
+            "source_refs": [],
+            "uncertainty_markers": [],
+        }
 
-if __name__ == "__main__":
-    unittest.main()
+        tmpdir = self._workspace_tmpdir("delivery-wechat-summary-variant-")
+        channel_env = Path("clawradar/publishers/wechat/.env")
+        original_env = channel_env.read_text(encoding="utf-8") if channel_env.exists() else None
+        channel_env.write_text("WECHAT_APPID=wx-test-appid\nWECHAT_SECRET=wx-test-secret\nWECHAT_AUTHOR=ClawRadar\n", encoding="utf-8")
+
+        class FakePublisher:
+            def __init__(self, appid, secret):
+                self.appid = appid
+                self.secret = secret
+
+            def get_access_token(self):
+                return "token-123"
+
+            def upload_default_cover(self, title=""):
+                return "cover-media-id"
+
+            def upload_draft(self, **kwargs):
+                FakePublisher.last_upload = kwargs
+                return "wechat-media-id"
+
+        try:
+            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+                from clawradar.publishers.wechat import service as wechat_service
+                wechat_service._channel_env.cache_clear()
+                result = topic_radar_deliver(
+                    payload,
+                    channel="wechat",
+                    target=payload["delivery_target"],
+                    delivery_time="2026-04-24T12:25:00Z",
+                    runs_root=Path(tmpdir),
+                )
+        finally:
+            from clawradar.publishers.wechat import service as wechat_service
+            wechat_service._channel_env.cache_clear()
+            if original_env is None:
+                if channel_env.exists():
+                    channel_env.unlink()
+            else:
+                channel_env.write_text(original_env, encoding="utf-8")
+
+        self._assert_protocol_fields(result)
+        self.assertEqual(result["run_status"], "completed")
+        self.assertEqual(FakePublisher.last_upload["digest"], "微信专用摘要文本。")
+
+    def test_wechat_delivery_retries_title_once_on_45003_and_succeeds(self):
+        payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
+        payload["delivery_channel"] = "wechat"
+        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["normalized_events"][0]["company"] = "OpenAI"
+        payload["content_bundle"]["title"]["text"] = "AI大模型调用量逆转，算力涨价谁买单：面向企业落地的深度观察报告——围绕模型、算力、采购与治理的超长标题扩展说明，用于验证45003重试是否真正触发"
+        tmpdir = self._workspace_tmpdir("delivery-wechat-45003-retry-")
+        channel_env = Path("clawradar/publishers/wechat/.env")
+        original_env = channel_env.read_text(encoding="utf-8") if channel_env.exists() else None
+        channel_env.write_text("WECHAT_APPID=wx-test-appid\nWECHAT_SECRET=wx-test-secret\nWECHAT_AUTHOR=ClawRadar\n", encoding="utf-8")
+
+        class FakePublisher:
+            last_error_message = None
+            last_error_details = None
+            upload_titles = []
+
+            def __init__(self, appid, secret):
+                self.appid = appid
+                self.secret = secret
+
+            def get_access_token(self):
+                return "token-123"
+
+            def upload_default_cover(self, title=""):
+                return "cover-media-id"
+
+            def upload_draft(self, **kwargs):
+                title = kwargs["title"]
+                FakePublisher.upload_titles.append(title)
+                if len(FakePublisher.upload_titles) == 1:
+                    attempted_title = title[:64]
+                    FakePublisher.last_error_message = "创建微信草稿失败：errcode=45003，errmsg=title size out of limit。"
+                    FakePublisher.last_error_details = {
+                        "errcode": "45003",
+                        "errmsg": "title size out of limit",
+                        "attempted_title": attempted_title,
+                        "attempted_title_utf8_bytes": len(attempted_title.encode("utf-8")),
+                    }
+                    raise WeChatDraftUploadError(
+                        errcode="45003",
+                        errmsg="title size out of limit",
+                        attempted_title=attempted_title,
+                        attempted_title_utf8_bytes=len(attempted_title.encode("utf-8")),
+                    )
+                FakePublisher.last_error_message = None
+                FakePublisher.last_error_details = None
+                FakePublisher.last_upload = kwargs
+                return "wechat-media-id"
+
+        try:
+            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+                from clawradar.publishers.wechat import service as wechat_service
+                wechat_service._channel_env.cache_clear()
+                result = topic_radar_deliver(
+                    payload,
+                    channel="wechat",
+                    target=payload["delivery_target"],
+                    delivery_time="2026-04-24T12:10:00Z",
+                    runs_root=Path(tmpdir),
+                )
+        finally:
+            from clawradar.publishers.wechat import service as wechat_service
+            wechat_service._channel_env.cache_clear()
+            if original_env is None:
+                if channel_env.exists():
+                    channel_env.unlink()
+            else:
+                channel_env.write_text(original_env, encoding="utf-8")
+
+        self._assert_protocol_fields(result)
+        self.assertEqual(result["run_status"], "completed")
+        self.assertEqual(len(FakePublisher.upload_titles), 2)
+        self.assertLess(len(FakePublisher.upload_titles[1].encode("utf-8")), len(FakePublisher.upload_titles[0].encode("utf-8")))
+        self.assertEqual(FakePublisher.last_upload["title"], FakePublisher.upload_titles[1])
+
+        message_path = Path(result["delivery_receipt"]["events"][0]["message_path"])
+        message_payload = json.loads(message_path.read_text(encoding="utf-8"))
+        publish_attempts = message_payload["metadata"]["publish_attempts"]
+        self.assertEqual(len(publish_attempts), 2)
+        self.assertEqual(publish_attempts[0]["stage"], "failed")
+        self.assertEqual(publish_attempts[0]["errcode"], "45003")
+        self.assertEqual(publish_attempts[1]["stage"], "succeeded")
+        self.assertEqual(message_payload["metadata"]["final_attempted_title"], FakePublisher.upload_titles[1])
+        self.assertEqual(
+            message_payload["metadata"]["final_attempted_title_utf8_bytes"],
+            len(FakePublisher.upload_titles[1].encode("utf-8")),
+        )
+
+    def test_wechat_delivery_reports_attempted_titles_when_45003_retry_still_fails(self):
+        payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
+        payload["delivery_channel"] = "wechat"
+        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["normalized_events"][0]["company"] = "OpenAI"
+        payload["content_bundle"]["title"]["text"] = "AI大模型调用量逆转，算力涨价谁买单：面向企业落地的深度观察报告——围绕模型、算力、采购与治理的超长标题扩展说明，用于验证45003失败后仍会保留重试痕迹"
+
+        tmpdir = self._workspace_tmpdir("delivery-wechat-45003-fail-")
+        channel_env = Path("clawradar/publishers/wechat/.env")
+        original_env = channel_env.read_text(encoding="utf-8") if channel_env.exists() else None
+        channel_env.write_text("WECHAT_APPID=wx-test-appid\nWECHAT_SECRET=wx-test-secret\nWECHAT_AUTHOR=ClawRadar\n", encoding="utf-8")
+
+        class FakePublisher:
+            last_error_message = None
+            last_error_details = None
+            upload_titles = []
+
+            def __init__(self, appid, secret):
+                self.appid = appid
+                self.secret = secret
+
+            def get_access_token(self):
+                return "token-123"
+
+            def upload_default_cover(self, title=""):
+                return "cover-media-id"
+
+            def upload_draft(self, **kwargs):
+                title = kwargs["title"]
+                FakePublisher.upload_titles.append(title)
+                attempted_title = title[:64]
+                FakePublisher.last_error_message = "创建微信草稿失败：errcode=45003，errmsg=title size out of limit。"
+                FakePublisher.last_error_details = {
+                    "errcode": "45003",
+                    "errmsg": "title size out of limit",
+                    "attempted_title": attempted_title,
+                    "attempted_title_utf8_bytes": len(attempted_title.encode("utf-8")),
+                }
+                raise WeChatDraftUploadError(
+                    errcode="45003",
+                    errmsg="title size out of limit",
+                    attempted_title=attempted_title,
+                    attempted_title_utf8_bytes=len(attempted_title.encode("utf-8")),
+                )
+
+        try:
+            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+                from clawradar.publishers.wechat import service as wechat_service
+                wechat_service._channel_env.cache_clear()
+                result = topic_radar_deliver(
+                    payload,
+                    channel="wechat",
+                    target=payload["delivery_target"],
+                    delivery_time="2026-04-24T12:20:00Z",
+                    runs_root=Path(tmpdir),
+                )
+        finally:
+            from clawradar.publishers.wechat import service as wechat_service
+            wechat_service._channel_env.cache_clear()
+            if original_env is None:
+                if channel_env.exists():
+                    channel_env.unlink()
+            else:
+                channel_env.write_text(original_env, encoding="utf-8")
+
+        self._assert_protocol_fields(result)
+        self.assertEqual(result["run_status"], "delivery_failed")
+        self.assertEqual(result["errors"][0]["code"], "delivery_channel_unavailable")
+        self.assertEqual(len(FakePublisher.upload_titles), 2)
+
+        failure_info = result["delivery_receipt"]["events"][0]["failure_info"]
+        self.assertEqual(failure_info["code"], "delivery_channel_unavailable")
+        self.assertIn("details", failure_info)
+        self.assertEqual(failure_info["details"]["errcode"], "45003")
+        self.assertEqual(failure_info["details"]["errmsg"], "title size out of limit")
+        self.assertEqual(len(failure_info["details"]["publish_attempts"]), 2)
+        self.assertEqual(failure_info["details"]["publish_attempts"][0]["stage"], "failed")
+        self.assertEqual(failure_info["details"]["publish_attempts"][1]["stage"], "failed")
+        self.assertLess(
+            failure_info["details"]["publish_attempts"][1]["requested_title_utf8_bytes"],
+            failure_info["details"]["publish_attempts"][0]["requested_title_utf8_bytes"],
+        )
+        self.assertEqual(result["errors"][0]["details"]["errcode"], "45003")
+
+    def test_wechat_delivery_retries_digest_once_on_45004_and_succeeds(self):
+        payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
+        payload["delivery_channel"] = "wechat"
+        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["normalized_events"][0]["company"] = "OpenAI"
+        payload["content_bundle"]["title"]["text"] = "AI算力涨价潮：供需关系重构与行业阵痛"
+        payload["content_bundle"]["summary"] = {
+            "version": 1,
+            "text": "中" * 150,
+            "channel_variants": {"wechat": "中" * 150},
+            "source_refs": [],
+            "uncertainty_markers": [],
+        }
+
+        tmpdir = self._workspace_tmpdir("delivery-wechat-45004-retry-")
+        channel_env = Path("clawradar/publishers/wechat/.env")
+        original_env = channel_env.read_text(encoding="utf-8") if channel_env.exists() else None
+        channel_env.write_text("WECHAT_APPID=wx-test-appid\nWECHAT_SECRET=wx-test-secret\nWECHAT_AUTHOR=ClawRadar\n", encoding="utf-8")
+
+        class FakePublisher:
+            last_error_message = None
+            last_error_details = None
+            upload_digests = []
+            upload_titles = []
+
+            def __init__(self, appid, secret):
+                self.appid = appid
+                self.secret = secret
+
+            def get_access_token(self):
+                return "token-123"
+
+            def upload_default_cover(self, title=""):
+                return "cover-media-id"
+
+            def upload_draft(self, **kwargs):
+                digest = kwargs["digest"]
+                title = kwargs["title"]
+                FakePublisher.upload_digests.append(digest)
+                FakePublisher.upload_titles.append(title)
+                if len(FakePublisher.upload_digests) == 1:
+                    FakePublisher.last_error_message = "创建微信草稿失败：errcode=45004，errmsg=description size out of limit。"
+                    FakePublisher.last_error_details = {
+                        "errcode": "45004",
+                        "errmsg": "description size out of limit",
+                        "attempted_title": title,
+                        "attempted_title_utf8_bytes": len(title.encode("utf-8")),
+                    }
+                    raise WeChatDraftUploadError(
+                        errcode="45004",
+                        errmsg="description size out of limit",
+                        attempted_title=title,
+                        attempted_title_utf8_bytes=len(title.encode("utf-8")),
+                    )
+                FakePublisher.last_error_message = None
+                FakePublisher.last_error_details = None
+                FakePublisher.last_upload = kwargs
+                return "wechat-media-id"
+
+        try:
+            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+                from clawradar.publishers.wechat import service as wechat_service
+                wechat_service._channel_env.cache_clear()
+                result = topic_radar_deliver(
+                    payload,
+                    channel="wechat",
+                    target=payload["delivery_target"],
+                    delivery_time="2026-04-24T12:30:00Z",
+                    runs_root=Path(tmpdir),
+                )
+        finally:
+            from clawradar.publishers.wechat import service as wechat_service
+            wechat_service._channel_env.cache_clear()
+            if original_env is None:
+                if channel_env.exists():
+                    channel_env.unlink()
+            else:
+                channel_env.write_text(original_env, encoding="utf-8")
+
+        self._assert_protocol_fields(result)
+        self.assertEqual(result["run_status"], "completed")
+        self.assertEqual(len(FakePublisher.upload_digests), 2)
+        self.assertLess(
+            len(FakePublisher.upload_digests[1].encode("utf-8")),
+            len(FakePublisher.upload_digests[0].encode("utf-8")),
+        )
+        self.assertLessEqual(len(FakePublisher.upload_digests[1].encode("utf-8")), MAX_WECHAT_DIGEST_UTF8_BYTES)
+        self.assertLessEqual(
+            len(FakePublisher.upload_digests[1]),
+            MAX_WECHAT_DIGEST_TEXT_UNITS,
+        )
+        self.assertEqual(FakePublisher.last_upload["digest"], FakePublisher.upload_digests[1])
+        self.assertLessEqual(len(FakePublisher.last_upload["digest"].encode("utf-8")), MAX_WECHAT_DIGEST_UTF8_BYTES)
+        self.assertLessEqual(
+            len(FakePublisher.last_upload["digest"]),
+            MAX_WECHAT_DIGEST_TEXT_UNITS,
+        )
+        self.assertNotIn("请直接重写一个更短且语义完整的微信公众号摘要", FakePublisher.upload_digests[1])
+
+        message_path = Path(result["delivery_receipt"]["events"][0]["message_path"])
+        message_payload = json.loads(message_path.read_text(encoding="utf-8"))
+        publish_attempts = message_payload["metadata"]["publish_attempts"]
+        self.assertEqual(len(publish_attempts), 2)
+        self.assertEqual(publish_attempts[0]["stage"], "failed")
+        self.assertEqual(publish_attempts[0]["errcode"], "45004")
+        self.assertEqual(publish_attempts[1]["stage"], "succeeded")
+        self.assertLess(publish_attempts[1]["digest_utf8_bytes"], publish_attempts[0]["digest_utf8_bytes"])
+        self.assertLessEqual(publish_attempts[1]["digest_chars"], MAX_WECHAT_DIGEST_TEXT_UNITS)
+        event_receipt = result["delivery_receipt"]["events"][0]
+        self.assertEqual(event_receipt["message_metadata"]["final_attempted_digest"], FakePublisher.upload_digests[1])
+        self.assertEqual(
+            event_receipt["message_metadata"]["final_attempted_digest_utf8_bytes"],
+            len(FakePublisher.upload_digests[1].encode("utf-8")),
+        )
+        self.assertLessEqual(event_receipt["message_metadata"]["final_attempted_digest_utf8_bytes"], MAX_WECHAT_DIGEST_UTF8_BYTES)
+        self.assertLessEqual(event_receipt["message_metadata"]["final_attempted_digest_chars"], MAX_WECHAT_DIGEST_TEXT_UNITS)
+        self.assertNotIn(
+            "请直接重写一个更短且语义完整的微信公众号摘要",
+            event_receipt["message_metadata"]["final_attempted_digest"],
+        )
+        self.assertEqual(
+            event_receipt["message_metadata"]["publish_attempts"][1]["requested_digest"],
+            FakePublisher.upload_digests[1],
+        )
+
+    def test_wechat_delivery_reports_failed_digests_when_45004_retry_still_fails(self):
+        payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
+        payload["delivery_channel"] = "wechat"
+        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["normalized_events"][0]["company"] = "OpenAI"
+        payload["content_bundle"]["title"]["text"] = "AI算力涨价潮：供需关系重构与行业阵痛"
+        payload["content_bundle"]["summary"] = {
+            "version": 1,
+            "text": "中" * 150,
+            "channel_variants": {"wechat": "中" * 150},
+            "source_refs": [],
+            "uncertainty_markers": [],
+        }
+
+        tmpdir = self._workspace_tmpdir("delivery-wechat-45004-fail-")
+        channel_env = Path("clawradar/publishers/wechat/.env")
+        original_env = channel_env.read_text(encoding="utf-8") if channel_env.exists() else None
+        channel_env.write_text("WECHAT_APPID=wx-test-appid\nWECHAT_SECRET=wx-test-secret\nWECHAT_AUTHOR=ClawRadar\n", encoding="utf-8")
+
+        class FakePublisher:
+            last_error_message = None
+            last_error_details = None
+            upload_digests = []
+            upload_titles = []
+
+            def __init__(self, appid, secret):
+                self.appid = appid
+                self.secret = secret
+
+            def get_access_token(self):
+                return "token-123"
+
+            def upload_default_cover(self, title=""):
+                return "cover-media-id"
+
+            def upload_draft(self, **kwargs):
+                digest = kwargs["digest"]
+                title = kwargs["title"]
+                FakePublisher.upload_digests.append(digest)
+                FakePublisher.upload_titles.append(title)
+                FakePublisher.last_error_message = "创建微信草稿失败：errcode=45004，errmsg=description size out of limit。"
+                FakePublisher.last_error_details = {
+                    "errcode": "45004",
+                    "errmsg": "description size out of limit",
+                    "attempted_title": title,
+                    "attempted_title_utf8_bytes": len(title.encode("utf-8")),
+                }
+                raise WeChatDraftUploadError(
+                    errcode="45004",
+                    errmsg="description size out of limit",
+                    attempted_title=title,
+                    attempted_title_utf8_bytes=len(title.encode("utf-8")),
+                )
+
+        try:
+            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+                from clawradar.publishers.wechat import service as wechat_service
+                wechat_service._channel_env.cache_clear()
+                result = topic_radar_deliver(
+                    payload,
+                    channel="wechat",
+                    target=payload["delivery_target"],
+                    delivery_time="2026-04-24T12:40:00Z",
+                    runs_root=Path(tmpdir),
+                )
+        finally:
+            from clawradar.publishers.wechat import service as wechat_service
+            wechat_service._channel_env.cache_clear()
+            if original_env is None:
+                if channel_env.exists():
+                    channel_env.unlink()
+            else:
+                channel_env.write_text(original_env, encoding="utf-8")
+
+        self._assert_protocol_fields(result)
+        self.assertEqual(result["run_status"], "delivery_failed")
+        self.assertEqual(result["errors"][0]["code"], "delivery_channel_unavailable")
+        self.assertEqual(len(FakePublisher.upload_digests), 2)
+
+        failure_info = result["delivery_receipt"]["events"][0]["failure_info"]
+        self.assertEqual(failure_info["code"], "delivery_channel_unavailable")
+        self.assertIn("details", failure_info)
+        self.assertEqual(failure_info["details"]["errcode"], "45004")
+        self.assertEqual(failure_info["details"]["errmsg"], "description size out of limit")
+        self.assertEqual(len(failure_info["details"]["publish_attempts"]), 2)
+        self.assertEqual(failure_info["details"]["publish_attempts"][0]["stage"], "failed")
+        self.assertEqual(failure_info["details"]["publish_attempts"][1]["stage"], "failed")
+        self.assertLess(
+            failure_info["details"]["publish_attempts"][1]["digest_utf8_bytes"],
+            failure_info["details"]["publish_attempts"][0]["digest_utf8_bytes"],
+        )
+        self.assertLessEqual(failure_info["details"]["publish_attempts"][1]["digest_utf8_bytes"], MAX_WECHAT_DIGEST_UTF8_BYTES)
+        self.assertLessEqual(len(FakePublisher.upload_digests[1]), MAX_WECHAT_DIGEST_TEXT_UNITS)
+        self.assertEqual(
+            failure_info["details"]["final_attempted_digest"],
+            FakePublisher.upload_digests[1],
+        )
+        self.assertEqual(
+            failure_info["details"]["final_attempted_digest_utf8_bytes"],
+            len(FakePublisher.upload_digests[1].encode("utf-8")),
+        )
+        self.assertLessEqual(failure_info["details"]["final_attempted_digest_utf8_bytes"], MAX_WECHAT_DIGEST_UTF8_BYTES)
+        self.assertLessEqual(failure_info["details"]["final_attempted_digest_chars"], MAX_WECHAT_DIGEST_TEXT_UNITS)
+        self.assertEqual(result["delivery_receipt"]["events"][0]["message_metadata"]["final_attempted_digest"], FakePublisher.upload_digests[1])
+        self.assertEqual(result["errors"][0]["details"]["errcode"], "45004")
+
+    def test_wechat_publisher_sends_utf8_json_body_without_unicode_escapes(self):
+        publisher = WeChatPublisher("wx-test-appid", "wx-test-secret")
+        publisher.access_token = "token-123"
+        captured = {}
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"media_id": "wechat-media-id"}
+
+        def fake_post(url, params=None, data=None, headers=None, timeout=None, **kwargs):
+            captured["url"] = url
+            captured["params"] = params
+            captured["data"] = data
+            captured["headers"] = headers
+            captured["timeout"] = timeout
+            captured["extra_kwargs"] = kwargs
+            return FakeResponse()
+
+        with patch("third_party.wechat_publisher.publisher.requests.post", side_effect=fake_post):
+            media_id = publisher.upload_draft(
+                title="中文标题甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥天地玄黄宇宙洪荒日月盈昃",
+                content="<p>正文</p>",
+                author="作者甲乙丙丁戊己庚辛壬癸",
+                digest="摘要甲乙丙丁戊己庚辛壬癸",
+                thumb_media_id="thumb-media-id",
+            )
+
+        self.assertEqual(media_id, "wechat-media-id")
+        self.assertNotIn("json", captured["extra_kwargs"])
+        self.assertIsInstance(captured["data"], bytes)
+        body_text = captured["data"].decode("utf-8")
+        self.assertIn("中文标题", body_text)
+        self.assertIn("作者甲乙", body_text)
+        self.assertIn("摘要甲乙", body_text)
+        self.assertNotIn("\\u", body_text)
+        self.assertEqual(captured["headers"], {"Content-Type": "application/json; charset=utf-8"})
+        self.assertEqual(captured["timeout"], 30)
+
+        article = json.loads(body_text)["articles"][0]
+        self.assertLessEqual(len(article["title"]), 64)
+        self.assertLessEqual(len(article["author"]), 8)
+        self.assertLessEqual(len(article["digest"]), 120)
+
+    def test_wechat_publisher_reports_official_draft_error_without_permission_guess(self):
+        publisher = WeChatPublisher("wx-test-appid", "wx-test-secret")
+        publisher.access_token = "token-123"
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "errcode": 45003,
+                    "errmsg": "title size out of limit",
+                }
+
+        with patch("third_party.wechat_publisher.publisher.requests.post", return_value=FakeResponse()):
+            with self.assertRaises(WeChatDraftUploadError) as context:
+                publisher.upload_draft(
+                    title="超长标题",
+                    content="<p>body</p>",
+                    author="ClawRadar",
+                    digest="summary",
+                    thumb_media_id="thumb-media-id",
+                )
+
+        error = context.exception
+        self.assertEqual(error.errcode, "45003")
+        self.assertEqual(error.errmsg, "title size out of limit")
+        self.assertEqual(
+            publisher.last_error_message,
+            "创建微信草稿失败：errcode=45003，errmsg=title size out of limit。",
+        )
+        self.assertEqual(
+            publisher.last_error_details,
+            {
+                "errcode": "45003",
+                "errmsg": "title size out of limit",
+                "attempted_title": "超长标题",
+                "attempted_title_utf8_bytes": len("超长标题".encode("utf-8")),
+                "attempted_digest": "summary",
+                "attempted_digest_utf8_bytes": len("summary".encode("utf-8")),
+                "attempted_digest_chars": 7,
+                "attempted_digest_text_units": 7,
+            },
+        )

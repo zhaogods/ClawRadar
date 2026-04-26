@@ -247,10 +247,13 @@ def resolve_publish_source(
 
 def _content_hash(payload: Dict[str, Any], delivery_channel: str, delivery_target: str) -> str:
     bundle = payload.get("content_bundle") if isinstance(payload.get("content_bundle"), dict) else {}
+    summary = bundle.get("summary") if isinstance(bundle.get("summary"), dict) else {}
+    channel_variants = summary.get("channel_variants") if isinstance(summary.get("channel_variants"), dict) else {}
     digest_source = {
         "event_id": str(bundle.get("event_id") or "").strip(),
         "title": str(bundle.get("title", {}).get("text") or "").strip(),
-        "summary": str(bundle.get("summary", {}).get("text") or "").strip(),
+        "summary": str(summary.get("text") or "").strip(),
+        "summary_wechat": str(channel_variants.get("wechat") or "").strip(),
         "body_markdown": str(bundle.get("draft", {}).get("body_markdown") or "").strip(),
         "delivery_channel": delivery_channel,
         "delivery_target": delivery_target,
@@ -335,6 +338,11 @@ def publish_existing_output(
         runs_root=source.run_root / "publish_replays",
     )
 
+    bundle = payload.get("content_bundle") if isinstance(payload.get("content_bundle"), dict) else {}
+    summary = bundle.get("summary") if isinstance(bundle.get("summary"), dict) else {}
+    channel_variants = summary.get("channel_variants") if isinstance(summary.get("channel_variants"), dict) else {}
+    summary_text = str(summary.get("text") or "").strip()
+    summary_wechat = str(channel_variants.get("wechat") or "").strip()
     event = ((result.get("delivery_receipt") or {}).get("events") or [{}])[0]
     record = {
         "published_at": _utc_timestamp(),
@@ -347,6 +355,8 @@ def publish_existing_output(
         "source_path": _relative_path(source.source_path),
         "run_root": _relative_path(source.run_root),
         "content_hash": content_hash,
+        "summary_text": summary_text,
+        "summary_wechat": summary_wechat,
         "message_path": event.get("message_path"),
         "payload_path": event.get("payload_path"),
         "archive_path": event.get("archive_path"),

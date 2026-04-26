@@ -14,6 +14,7 @@ from .publishers.wechat.service import (
     build_wechat_delivery_message,
 )
 from .scoring import ScoreDecisionStatus
+from .writing import MAX_WECHAT_DIGEST_TEXT_UNITS, MAX_WECHAT_DIGEST_UTF8_BYTES
 
 
 class DeliveryRunStatus(str, Enum):
@@ -513,6 +514,38 @@ def _archive_root_from_output_context(output_context: Dict[str, Any]) -> Optiona
 
 
 
+def _merge_wechat_retry_details(
+    previous_details: Optional[Dict[str, Any]],
+    current_details: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    if not isinstance(previous_details, dict) and not isinstance(current_details, dict):
+        return None
+    if not isinstance(previous_details, dict):
+        return deepcopy(current_details) if isinstance(current_details, dict) else None
+    if not isinstance(current_details, dict):
+        return deepcopy(previous_details)
+    merged = deepcopy(current_details)
+    previous_attempts = previous_details.get("publish_attempts") if isinstance(previous_details.get("publish_attempts"), list) else []
+    current_attempts = current_details.get("publish_attempts") if isinstance(current_details.get("publish_attempts"), list) else []
+    if previous_attempts or current_attempts:
+        merged["publish_attempts"] = [*deepcopy(previous_attempts), *deepcopy(current_attempts)]
+    return merged
+
+
+def _rewrite_message_metadata(message_path: Optional[str], metadata: Optional[Dict[str, Any]]) -> None:
+    if not message_path or not isinstance(metadata, dict):
+        return
+    path = Path(message_path)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(payload, dict):
+        return
+    payload["metadata"] = deepcopy(metadata)
+    _write_json(path, payload)
+
+
 def _archive_delivery_workspace(
     payload: Dict[str, Any],
     event_payload: Dict[str, Any],
@@ -575,14 +608,26 @@ def _archive_delivery_workspace(
         "scorecard_path": _relative_path(scorecard_path),
         "payload_path": _relative_path(payload_path),
         "message_path": _relative_path(message_path),
+        "message_metadata": _message_metadata(archive_dir, message_path),
     }
+
+
+def _message_metadata(archive_dir: Path, message_path: Path) -> Optional[Dict[str, Any]]:
+    try:
+        payload = json.loads(message_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    metadata = payload.get("metadata") if isinstance(payload, dict) else None
+    if not isinstance(metadata, dict):
+        return None
+    return deepcopy(metadata)
 
 
 def build_archive_only_delivery_result(
     payload: Dict[str, Any],
     *,
-    delivery_time: Optional[str] = None,
-    delivery_target: Optional[str] = None,
+    delivery_time: Optional[str],
+    delivery_target: Optional[str],
     runs_root: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """建立 archive_only 本地留档并返回可追溯回执。"""
@@ -607,6 +652,7 @@ def build_archive_only_delivery_result(
             "scorecard_path": None,
             "payload_path": None,
             "message_path": None,
+            "message_metadata": None,
         }
 
         try:
@@ -628,6 +674,7 @@ def build_archive_only_delivery_result(
                     scorecard_path=archive_paths["scorecard_path"],
                     payload_path=archive_paths["payload_path"],
                     message_path=archive_paths["message_path"],
+                    message_metadata=archive_paths["message_metadata"],
                     failure_code=DeliveryErrorCode.ARCHIVE_WRITE_FAILED.value,
                     failure_message=str(exc),
                     delivery_target=resolved_delivery_target,
@@ -654,6 +701,7 @@ def build_archive_only_delivery_result(
                 "scorecard_path": archive_paths["scorecard_path"],
                 "payload_path": archive_paths["payload_path"],
                 "message_path": archive_paths["message_path"],
+                "message_metadata": archive_paths["message_metadata"],
                 "status": "archived",
                 "failure_info": None,
             }
@@ -684,7 +732,6 @@ def build_archive_only_delivery_result(
     }
 
 
-
 def _simulate_delivery(payload: Dict[str, Any], *, delivery_channel: str, delivery_target: str) -> None:
     del delivery_target
     if payload.get("simulate_delivery_failure"):
@@ -706,7 +753,18 @@ def _build_event_failure_receipt(
     failure_code: str,
     failure_message: str,
     delivery_target: Optional[str],
+    failure_details: Optional[Dict[str, Any]] = None,
+    message_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    failure_info = {
+        "code": failure_code,
+        "message": failure_message,
+    }
+    if isinstance(failure_details, dict) and failure_details:
+        failure_info["details"] = deepcopy(failure_details)
+    receipt_message_metadata = message_metadata
+    if not isinstance(receipt_message_metadata, dict) and isinstance(failure_details, dict) and failure_details:
+        receipt_message_metadata = failure_details
     return {
         "request_id": str(event_payload.get("request_id") or "").strip(),
         "event_id": str(event_payload.get("event_id") or "").strip(),
@@ -718,11 +776,9 @@ def _build_event_failure_receipt(
         "scorecard_path": scorecard_path,
         "payload_path": payload_path,
         "message_path": message_path,
+        "message_metadata": deepcopy(receipt_message_metadata) if isinstance(receipt_message_metadata, dict) else None,
         "status": "failed",
-        "failure_info": {
-            "code": failure_code,
-            "message": failure_message,
-        },
+        "failure_info": failure_info,
     }
 
 
@@ -736,6 +792,7 @@ def _build_event_success_receipt(
     scorecard_path: str,
     payload_path: str,
     message_path: str,
+    message_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     return {
         "request_id": str(event_payload.get("request_id") or "").strip(),
@@ -748,6 +805,7 @@ def _build_event_success_receipt(
         "scorecard_path": scorecard_path,
         "payload_path": payload_path,
         "message_path": message_path,
+        "message_metadata": deepcopy(message_metadata) if isinstance(message_metadata, dict) else None,
         "status": "delivered",
         "failure_info": None,
     }
@@ -788,107 +846,183 @@ def topic_radar_deliver(
     errors: List[Dict[str, Any]] = []
 
     for content_bundle in normalized_payload["content_bundles"]:
-        event_payload = _build_protocol_event_payload(normalized_payload, content_bundle)
+        working_bundle = deepcopy(content_bundle) if isinstance(content_bundle, dict) else content_bundle
+        event_payload = _build_protocol_event_payload(normalized_payload, working_bundle)
         archive_paths: Dict[str, Optional[str]] = {
             "archive_path": None,
             "scorecard_path": None,
             "payload_path": None,
             "message_path": None,
+            "message_metadata": None,
         }
         resolved_target = str(target or normalized_payload.get("delivery_target") or "").strip()
+        retry_summary_feedback: Optional[Dict[str, Any]] = None
+        retry_publish_details: Optional[Dict[str, Any]] = None
 
-        try:
-            resolved_channel = _resolve_delivery_channel(normalized_payload, resolved_channel)
-            resolved_target = _resolve_delivery_target(normalized_payload, resolved_target)
-            archive_paths = _archive_delivery_workspace(
-                normalized_payload,
-                event_payload,
-                delivery_channel=resolved_channel,
-                delivery_target=resolved_target,
-                delivery_time=resolved_delivery_time,
-                runs_root=resolved_runs_root,
-            )
-            _simulate_delivery(
-                normalized_payload,
-                delivery_channel=resolved_channel,
-                delivery_target=resolved_target,
-            )
-        except DeliveryValidationError as exc:
-            event_receipts.append(
-                _build_event_failure_receipt(
-                    event_payload=event_payload,
-                    delivery_time=resolved_delivery_time,
+        for attempt in range(2):
+            try:
+                resolved_channel = _resolve_delivery_channel(normalized_payload, resolved_channel)
+                resolved_target = _resolve_delivery_target(normalized_payload, resolved_target)
+                attempt_payload = deepcopy(normalized_payload)
+                attempt_payload["content_bundles"] = [working_bundle] if isinstance(working_bundle, dict) else [content_bundle]
+                if retry_summary_feedback and isinstance(working_bundle, dict):
+                    working_bundle = deepcopy(working_bundle)
+                    working_bundle["summary_rewrite_feedback"] = deepcopy(retry_summary_feedback)
+                    attempt_payload["content_bundles"] = [working_bundle]
+                archive_paths = _archive_delivery_workspace(
+                    attempt_payload,
+                    event_payload,
                     delivery_channel=resolved_channel,
-                    archive_path=archive_paths["archive_path"],
-                    scorecard_path=archive_paths["scorecard_path"],
-                    payload_path=archive_paths["payload_path"],
-                    message_path=archive_paths["message_path"],
-                    failure_code=exc.code.value,
-                    failure_message=exc.message,
-                    delivery_target=resolved_target or None,
-                )
-            )
-            errors.append(exc.to_error_response())
-            continue
-        except OSError as exc:
-            event_receipts.append(
-                _build_event_failure_receipt(
-                    event_payload=event_payload,
+                    delivery_target=resolved_target,
                     delivery_time=resolved_delivery_time,
-                    delivery_channel=resolved_channel,
-                    archive_path=archive_paths["archive_path"],
-                    scorecard_path=archive_paths["scorecard_path"],
-                    payload_path=archive_paths["payload_path"],
-                    message_path=archive_paths["message_path"],
-                    failure_code=DeliveryErrorCode.ARCHIVE_WRITE_FAILED.value,
-                    failure_message=str(exc),
-                    delivery_target=resolved_target or None,
+                    runs_root=resolved_runs_root,
                 )
-            )
-            errors.append(
-                {
-                    "code": DeliveryErrorCode.ARCHIVE_WRITE_FAILED.value,
-                    "message": str(exc),
-                    "missing_fields": [],
-                }
-            )
-            continue
-        except (RuntimeError, WeChatOfficialAccountPublishError) as exc:
-            event_receipts.append(
-                _build_event_failure_receipt(
-                    event_payload=event_payload,
-                    delivery_time=resolved_delivery_time,
+                _simulate_delivery(
+                    attempt_payload,
                     delivery_channel=resolved_channel,
-                    archive_path=archive_paths["archive_path"],
-                    scorecard_path=archive_paths["scorecard_path"],
-                    payload_path=archive_paths["payload_path"],
-                    message_path=archive_paths["message_path"],
-                    failure_code=DeliveryErrorCode.DELIVERY_CHANNEL_UNAVAILABLE.value,
-                    failure_message=str(exc),
-                    delivery_target=resolved_target or None,
+                    delivery_target=resolved_target,
                 )
-            )
-            errors.append(
-                {
-                    "code": DeliveryErrorCode.DELIVERY_CHANNEL_UNAVAILABLE.value,
-                    "message": str(exc),
-                    "missing_fields": [],
-                }
-            )
-            continue
+                success_message_metadata = archive_paths["message_metadata"]
+                if retry_publish_details and isinstance(success_message_metadata, dict):
+                    success_message_metadata = _merge_wechat_retry_details(retry_publish_details, success_message_metadata)
+                    _rewrite_message_metadata(archive_paths["message_path"], success_message_metadata)
+                    archive_paths["message_metadata"] = success_message_metadata
+                event_receipts.append(
+                    _build_event_success_receipt(
+                        event_payload=event_payload,
+                        delivery_time=resolved_delivery_time,
+                        delivery_channel=resolved_channel,
+                        delivery_target=resolved_target,
+                        archive_path=str(archive_paths["archive_path"]),
+                        scorecard_path=str(archive_paths["scorecard_path"]),
+                        payload_path=str(archive_paths["payload_path"]),
+                        message_path=str(archive_paths["message_path"]),
+                        message_metadata=archive_paths["message_metadata"],
+                    )
+                )
+                break
+            except DeliveryValidationError as exc:
+                event_receipts.append(
+                    _build_event_failure_receipt(
+                        event_payload=event_payload,
+                        delivery_time=resolved_delivery_time,
+                        delivery_channel=resolved_channel,
+                        archive_path=archive_paths["archive_path"],
+                        scorecard_path=archive_paths["scorecard_path"],
+                        payload_path=archive_paths["payload_path"],
+                        message_path=archive_paths["message_path"],
+                        message_metadata=archive_paths["message_metadata"],
+                        failure_code=exc.code.value,
+                        failure_message=exc.message,
+                        delivery_target=resolved_target or None,
+                    )
+                )
+                errors.append(exc.to_error_response())
+                break
+            except OSError as exc:
+                event_receipts.append(
+                    _build_event_failure_receipt(
+                        event_payload=event_payload,
+                        delivery_time=resolved_delivery_time,
+                        delivery_channel=resolved_channel,
+                        archive_path=archive_paths["archive_path"],
+                        scorecard_path=archive_paths["scorecard_path"],
+                        payload_path=archive_paths["payload_path"],
+                        message_path=archive_paths["message_path"],
+                        message_metadata=archive_paths["message_metadata"],
+                        failure_code=DeliveryErrorCode.ARCHIVE_WRITE_FAILED.value,
+                        failure_message=str(exc),
+                        delivery_target=resolved_target or None,
+                    )
+                )
+                errors.append(
+                    {
+                        "code": DeliveryErrorCode.ARCHIVE_WRITE_FAILED.value,
+                        "message": str(exc),
+                        "missing_fields": [],
+                    }
+                )
+                break
+            except (RuntimeError, WeChatOfficialAccountPublishError) as exc:
+                failure_details = exc.details if isinstance(exc, WeChatOfficialAccountPublishError) else None
+                if (
+                    attempt == 0
+                    and resolved_channel in {DeliveryChannel.WECHAT.value, DeliveryChannel.WECHAT_OFFICIAL_ACCOUNT.value}
+                    and isinstance(failure_details, dict)
+                    and str(failure_details.get("errcode") or "").strip() == "45004"
+                ):
+                    retry_summary_feedback = {
+                        "reason": "description size out of limit",
+                        "requiredAction": "请直接重写一个更短且语义完整的微信公众号摘要，不要截断上一版摘要。",
+                        "maxUtf8Bytes": MAX_WECHAT_DIGEST_UTF8_BYTES,
+                        "maxTextUnits": MAX_WECHAT_DIGEST_TEXT_UNITS,
+                        "maxChars": MAX_WECHAT_DIGEST_TEXT_UNITS,
+                        "previousDigest": str(failure_details.get("attempted_digest") or failure_details.get("requested_digest") or "").strip(),
+                    }
+                    retry_publish_details = deepcopy(failure_details)
+                    write_payload = deepcopy(payload)
+                    write_payload["content_bundle"] = deepcopy(working_bundle)
+                    write_payload["delivery_channel"] = resolved_channel
+                    write_payload["delivery_target"] = resolved_target
+                    write_payload["decision_status"] = normalized_payload.get("decision_status")
+                    write_payload["request_id"] = normalized_payload.get("request_id")
+                    write_payload["trigger_source"] = normalized_payload.get("trigger_source")
+                    if isinstance(write_payload["content_bundle"], dict):
+                        write_payload["content_bundle"]["summary_rewrite_feedback"] = deepcopy(retry_summary_feedback)
+                        if not isinstance(write_payload["content_bundle"].get("evidence_packet"), dict) and isinstance(
+                            write_payload["content_bundle"].get("evidence_pack"), dict
+                        ):
+                            write_payload["content_bundle"]["evidence_packet"] = deepcopy(
+                                write_payload["content_bundle"]["evidence_pack"]
+                            )
+                    write_payload["summary_rewrite_feedback"] = deepcopy(retry_summary_feedback)
+                    try:
+                        from .writing import WriteOperation, topic_radar_write
 
-        event_receipts.append(
-            _build_event_success_receipt(
-                event_payload=event_payload,
-                delivery_time=resolved_delivery_time,
-                delivery_channel=resolved_channel,
-                delivery_target=resolved_target,
-                archive_path=str(archive_paths["archive_path"]),
-                scorecard_path=str(archive_paths["scorecard_path"]),
-                payload_path=str(archive_paths["payload_path"]),
-                message_path=str(archive_paths["message_path"]),
-            )
-        )
+                        write_result = topic_radar_write(
+                            write_payload,
+                            operation=WriteOperation.REGENERATE_SUMMARY.value,
+                            executor="openclaw_builtin",
+                        )
+                        refreshed_bundles = write_result.get("content_bundles") if isinstance(write_result, dict) else []
+                        if refreshed_bundles and isinstance(refreshed_bundles[0], dict):
+                            working_bundle = refreshed_bundles[0]
+                            event_payload = _build_protocol_event_payload(normalized_payload, working_bundle)
+                            continue
+                    except Exception as write_exc:
+                        failure_details = {
+                            **(failure_details or {}),
+                            "summary_retry_error": str(write_exc),
+                        }
+                if retry_publish_details and isinstance(failure_details, dict):
+                    failure_details = _merge_wechat_retry_details(retry_publish_details, failure_details)
+                event_receipts.append(
+                    _build_event_failure_receipt(
+                        event_payload=event_payload,
+                        delivery_time=resolved_delivery_time,
+                        delivery_channel=resolved_channel,
+                        archive_path=archive_paths["archive_path"],
+                        scorecard_path=archive_paths["scorecard_path"],
+                        payload_path=archive_paths["payload_path"],
+                        message_path=archive_paths["message_path"],
+                        message_metadata=archive_paths["message_metadata"],
+                        failure_code=DeliveryErrorCode.DELIVERY_CHANNEL_UNAVAILABLE.value,
+                        failure_message=str(exc),
+                        delivery_target=resolved_target or None,
+                        failure_details=failure_details,
+                    )
+                )
+                errors.append(
+                    {
+                        "code": DeliveryErrorCode.DELIVERY_CHANNEL_UNAVAILABLE.value,
+                        "message": str(exc),
+                        "missing_fields": [],
+                        "details": deepcopy(failure_details) if isinstance(failure_details, dict) and failure_details else None,
+                    }
+                )
+                break
+        else:
+            continue
 
     run_status = DeliveryRunStatus.COMPLETED.value if not errors else DeliveryRunStatus.DELIVERY_FAILED.value
     primary_view = _build_protocol_view(normalized_payload)

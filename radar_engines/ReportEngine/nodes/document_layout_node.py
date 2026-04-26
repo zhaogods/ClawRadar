@@ -5,7 +5,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+import re
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
@@ -16,6 +17,112 @@ from ..prompts import (
 )
 from ..utils.json_parser import RobustJSONParser, JSONParseError
 from .base_node import BaseNode
+
+MAX_TITLE_CHARS = 64
+MAX_TITLE_RETRY_ATTEMPTS = 3
+TITLE_FALLBACK_TEXT = "未命名报告"
+
+
+def _utf8_length(text: str) -> int:
+    return len(str(text or "").encode("utf-8"))
+
+
+def _normalize_title_text(text: Any) -> str:
+    return re.sub(r"\s+", " ", str(text or "")).strip(" \t\r\n：:｜|丨/／,，;；。！？!?-—–_")
+
+
+def _build_title_constraints() -> Dict[str, Any]:
+    return {
+        "channel": "wechat_draft",
+        "max_chars": MAX_TITLE_CHARS,
+        "max_utf8_bytes": MAX_TITLE_CHARS * 4,
+        "rewrite_when_over_limit": True,
+        "allow_truncate_as_business_fallback": False,
+        "require_semantic_completeness": True,
+    }
+
+
+def _title_candidates(text: Any) -> List[str]:
+    base = _normalize_title_text(text)
+    if not base:
+        return []
+
+    variants = [base]
+    without_brackets = _normalize_title_text(
+        re.sub(r"（[^）]{0,30}）|\([^)]{0,30}\)|【[^】]{0,30}】|\[[^\]]{0,30}\]", "", base)
+    )
+    if without_brackets:
+        variants.append(without_brackets)
+
+    candidates: List[str] = []
+    seen = set()
+    suffixes = (
+        "深度观察报告",
+        "深度观察",
+        "分析报告",
+        "观察报告",
+        "专题报告",
+        "舆情洞察报告",
+        "热点追踪",
+        "情况说明",
+        "详细说明",
+        "重大更新说明",
+        "报告标题",
+        "超长版本",
+    )
+    split_pattern = r"[：:｜|丨/／—\-–,，;；。！？!?]\s*"
+
+    for item in variants:
+        current = item
+        while current:
+            normalized = _normalize_title_text(current)
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                candidates.append(normalized)
+
+            updated = normalized
+            for suffix in suffixes:
+                if updated.endswith(suffix) and len(updated) > len(suffix) + 2:
+                    updated = _normalize_title_text(updated[: -len(suffix)])
+                    break
+            if updated == normalized:
+                break
+            current = updated
+
+        segments = [_normalize_title_text(part) for part in re.split(split_pattern, item) if _normalize_title_text(part)]
+        if segments and segments[0] not in seen:
+            seen.add(segments[0])
+            candidates.append(segments[0])
+
+    return candidates
+
+
+def _regenerate_layout_title(
+    text: Any,
+    *,
+    fallback: str = TITLE_FALLBACK_TEXT,
+    extra_candidates: Optional[List[str]] = None,
+) -> str:
+    candidates: List[str] = []
+    seen = set()
+
+    def add_candidate(value: Any) -> None:
+        for candidate in _title_candidates(value):
+            if candidate and candidate not in seen:
+                seen.add(candidate)
+                candidates.append(candidate)
+
+    add_candidate(text)
+    for candidate in extra_candidates or []:
+        add_candidate(candidate)
+    add_candidate(fallback)
+
+    for candidate in candidates:
+        if len(candidate) <= MAX_TITLE_CHARS:
+            return candidate
+
+    normalized_fallback = _normalize_title_text(fallback) or TITLE_FALLBACK_TEXT
+    return normalized_fallback[:MAX_TITLE_CHARS].rstrip() or TITLE_FALLBACK_TEXT
 
 
 class DocumentLayoutNode(BaseNode):
@@ -72,18 +179,67 @@ class DocumentLayoutNode(BaseNode):
             },
             "reports": reports,
             "forumLogs": forum_logs,
+            "titleConstraints": _build_title_constraints(),
         }
 
-        user_message = build_document_layout_prompt(payload)
-        response = self.llm_client.stream_invoke_to_string(
-            SYSTEM_PROMPT_DOCUMENT_LAYOUT,
-            user_message,
-            temperature=0.3,
-            top_p=0.9,
-        )
-        design = self._parse_response(response)
-        logger.info("文档标题/目录设计已生成")
-        return design
+        fallback_title = _normalize_title_text(query) or _normalize_title_text(payload["templateOverview"].get("title")) or TITLE_FALLBACK_TEXT
+        extra_candidates = [query, payload["templateOverview"].get("title")]
+        retry_feedback = None
+
+        for attempt in range(1, MAX_TITLE_RETRY_ATTEMPTS + 1):
+            attempt_payload = dict(payload)
+            if retry_feedback:
+                attempt_payload["titleRewriteFeedback"] = retry_feedback
+            user_message = build_document_layout_prompt(attempt_payload)
+            response = self.llm_client.stream_invoke_to_string(
+                SYSTEM_PROMPT_DOCUMENT_LAYOUT,
+                user_message,
+                temperature=0.3,
+                top_p=0.9,
+            )
+            design = self._parse_response(response)
+            raw_title = design.get("title")
+            normalized_title = _normalize_title_text(raw_title)
+            if normalized_title and len(normalized_title) <= MAX_TITLE_CHARS:
+                design["title"] = normalized_title
+                logger.info("文档标题/目录设计已生成")
+                return design
+
+            regenerated_title = _regenerate_layout_title(
+                raw_title,
+                fallback=fallback_title,
+                extra_candidates=extra_candidates,
+            )
+            if attempt < MAX_TITLE_RETRY_ATTEMPTS:
+                logger.warning(
+                    "文档设计title超出微信标题限制，触发重生成（第 {attempt}/{total} 次）: {title}",
+                    attempt=attempt,
+                    total=MAX_TITLE_RETRY_ATTEMPTS,
+                    title=normalized_title or raw_title,
+                )
+                retry_feedback = {
+                    "reason": "title exceeds wechat draft limit or is not semantically complete",
+                    "maxChars": MAX_TITLE_CHARS,
+                    "maxUtf8Bytes": MAX_TITLE_CHARS * 4,
+                    "previousTitle": normalized_title or str(raw_title or "").strip(),
+                    "requiredAction": "请直接重写一个更短且语义完整的标题，不要截断上一版标题。",
+                    "suggestedDirection": regenerated_title,
+                }
+                continue
+
+            logger.warning(
+                "文档设计title连续超限，已使用语义重写结果作为最终防御边界: {before} -> {after}",
+                before=normalized_title or raw_title,
+                after=regenerated_title,
+            )
+            design["title"] = regenerated_title
+            layout_notes = design.get("layoutNotes")
+            if isinstance(layout_notes, list):
+                layout_notes.append("标题在多次超限后已由系统执行语义重写压缩，未使用截断。")
+            logger.info("文档标题/目录设计已生成")
+            return design
+
+        raise ValueError("文档标题生成失败：无法得到符合微信标题约束的结果")
 
     def _parse_response(self, raw: str) -> Dict[str, Any]:
         """
@@ -109,12 +265,15 @@ class DocumentLayoutNode(BaseNode):
                 raw,
                 context_name="文档设计",
                 # 目录字段已更名为 tocPlan，这里跟随最新Schema校验
-                expected_keys=["title", "tocPlan", "hero"],
+                expected_keys=["title", "tocPlan", "hero", "summaryPack"],
             )
-            # 验证关键字段的类型
-            if not isinstance(result.get("title"), str):
-                logger.warning("文档设计缺少title字段或类型错误，使用默认值")
-                result.setdefault("title", "未命名报告")
+            # 验证关键字段的类型，标题长度约束由 run() 中的重生成流程统一处理
+            raw_title = result.get("title")
+            if not isinstance(raw_title, str):
+                logger.warning("文档设计缺少title字段或类型错误，使用空标题等待后续重生成")
+                result["title"] = ""
+            else:
+                result["title"] = _normalize_title_text(raw_title)
 
             # 处理tocPlan字段
             toc_plan = result.get("tocPlan", [])
@@ -128,6 +287,8 @@ class DocumentLayoutNode(BaseNode):
             if not isinstance(result.get("hero"), dict):
                 logger.warning("文档设计缺少hero字段或类型错误，使用空对象")
                 result.setdefault("hero", {})
+
+            result["summaryPack"] = self._normalize_summary_pack(result.get("summaryPack"), hero=result.get("hero"))
 
             return result
         except JSONParseError as exc:
@@ -203,6 +364,43 @@ class DocumentLayoutNode(BaseNode):
             cleaned_plan.append(entry)
 
         return cleaned_plan
+    def _normalize_summary_pack(self, summary_pack: Any, *, hero: Dict[str, Any]) -> Dict[str, str]:
+        def clean_text(value: Any) -> str:
+            if isinstance(value, dict):
+                return ""
+            if isinstance(value, list):
+                return " ".join(str(item).strip() for item in value if str(item).strip())
+            return re.sub(r"\s+", " ", str(value or "")).strip()
+
+        fallback_summary = clean_text((hero or {}).get("summary"))
+        if not isinstance(summary_pack, dict):
+            return {
+                "generic": fallback_summary,
+                "short": fallback_summary,
+                "wechat": fallback_summary,
+                "sourceHint": "hero.summary" if fallback_summary else "",
+            }
+
+        generic = clean_text(summary_pack.get("generic"))
+        short = clean_text(summary_pack.get("short"))
+        wechat = clean_text(summary_pack.get("wechat"))
+        source_hint = clean_text(summary_pack.get("sourceHint"))
+
+        if not generic:
+            generic = fallback_summary
+        if not short:
+            short = generic or fallback_summary
+        if not wechat:
+            wechat = short or generic or fallback_summary
+        if not source_hint and fallback_summary:
+            source_hint = "hero.summary"
+
+        return {
+            "generic": generic,
+            "short": short,
+            "wechat": wechat,
+            "sourceHint": source_hint,
+        }
 
 
 __all__ = ["DocumentLayoutNode"]

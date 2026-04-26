@@ -544,6 +544,7 @@ class ReportAgent:
                     "title": layout_design.get("tocTitle") or "目录",
                 },
                 "hero": layout_design.get("hero"),
+                "summaryPack": deepcopy(layout_design.get("summaryPack") or {}),
                 "layoutNotes": layout_design.get("layoutNotes"),
                 "wordPlan": {
                     "totalWords": word_plan.get("totalWords"),
@@ -767,6 +768,8 @@ class ReportAgent:
             return {
                 'html_content': html_report,
                 'report_id': report_id,
+                'report_title': manifest_meta.get('title'),
+                'report_metadata': deepcopy(manifest_meta),
                 **saved_files
             }
 
