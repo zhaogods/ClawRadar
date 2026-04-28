@@ -3,7 +3,7 @@ import os
 import shutil
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from clawradar.publish_only import publish_existing_output
 
@@ -331,6 +331,207 @@ class PublishOnlyTestCase(unittest.TestCase):
             "Latest WeChat summary",
         )
         self.assertTrue((modern_run / "publish" / "records.jsonl").exists())
+
+    def test_publish_only_triggers_notification_when_configured(self):
+        runs_root = self._workspace_tmpdir("publish-only-notify-")
+        run_root = runs_root / "req-new" / "run-new"
+        self._write_content_bundles(run_root, event_id="evt-new")
+
+        fake_result = {
+            "run_status": "completed",
+            "request_id": "req-new",
+            "event_id": "evt-new",
+            "delivery_receipt": {
+                "delivery_channel": "wechat",
+                "delivery_target": "wechat://draft-box/openclaw-review",
+                "events": [
+                    {
+                        "status": "delivered",
+                        "message_path": "wechat_delivery_message.json",
+                        "payload_path": "payload_snapshot.json",
+                        "archive_path": "archive",
+                        "failure_info": None,
+                    }
+                ]
+            },
+            "errors": [],
+        }
+        fake_notification_result = {
+            "run_status": "completed",
+            "notification_receipt": {
+                "notification_channel": "pushplus",
+                "notification_target": "pushplus://default",
+                "notification_reason": "publish_succeeded",
+            },
+            "errors": [],
+            "skip_reason": None,
+        }
+
+        with patch("clawradar.publish_only.topic_radar_deliver", return_value=fake_result), patch(
+            "clawradar.publish_only.topic_radar_notify", return_value=fake_notification_result
+        ) as mocked_notify:
+            result = publish_existing_output(
+                runs_root=runs_root,
+                delivery_channel="wechat",
+                delivery_target="wechat://draft-box/openclaw-review",
+                notification_channel="pushplus",
+                notification_target="pushplus://default",
+                notification_options={"pushplus": {"token": "token-123"}},
+                notify_on=["publish_succeeded"],
+            )
+
+        notify_payload = mocked_notify.call_args.args[0]
+        self.assertEqual(result["notification_result"], fake_notification_result)
+        self.assertEqual(mocked_notify.call_args.kwargs["channel"], "pushplus")
+        self.assertEqual(mocked_notify.call_args.kwargs["target"], "pushplus://default")
+        self.assertEqual(mocked_notify.call_args.kwargs["runs_root"], run_root)
+        self.assertEqual(notify_payload["notification_channel"], "pushplus")
+        self.assertEqual(notify_payload["notification_target"], "pushplus://default")
+        self.assertEqual(notify_payload["notify_on"], ["publish_succeeded"])
+        self.assertEqual(notify_payload["notification_reason"], "publish_succeeded")
+        self.assertEqual(notify_payload["output_root"], run_root.as_posix())
+        self.assertEqual(notify_payload["output_context"]["output_root"], run_root.as_posix())
+        self.assertEqual(notify_payload["entry_options"]["notification"]["channel"], "pushplus")
+        self.assertEqual(notify_payload["entry_options"]["notification"]["target"], "pushplus://default")
+        self.assertEqual(notify_payload["entry_options"]["notification"]["notify_on"], ["publish_succeeded"])
+        self.assertNotIn("token", notify_payload["entry_options"]["notification"].get("pushplus", {}))
+        self.assertEqual(notify_payload["delivery_channel"], "wechat")
+        self.assertEqual(notify_payload["delivery_target"], "wechat://draft-box/openclaw-review")
+
+    def test_publish_only_skips_notification_when_not_configured(self):
+        runs_root = self._workspace_tmpdir("publish-only-notify-skip-")
+        run_root = runs_root / "req-new" / "run-new"
+        self._write_content_bundles(run_root, event_id="evt-new")
+
+        fake_result = {
+            "run_status": "completed",
+            "request_id": "req-new",
+            "event_id": "evt-new",
+            "delivery_receipt": {
+                "events": [
+                    {
+                        "status": "delivered",
+                        "message_path": "wechat_delivery_message.json",
+                        "payload_path": "payload_snapshot.json",
+                        "archive_path": "archive",
+                        "failure_info": None,
+                    }
+                ]
+            },
+            "errors": [],
+        }
+
+        with patch("clawradar.publish_only.topic_radar_deliver", return_value=fake_result), patch(
+            "clawradar.publish_only.topic_radar_notify", return_value={"run_status": "skipped"}
+        ) as mocked_notify:
+            result = publish_existing_output(
+                runs_root=runs_root,
+                delivery_channel="wechat",
+                delivery_target="wechat://draft-box/openclaw-review",
+            )
+
+        mocked_notify.assert_called_once()
+        notify_payload = mocked_notify.call_args.args[0]
+        self.assertEqual(mocked_notify.call_args.kwargs["channel"], None)
+        self.assertEqual(mocked_notify.call_args.kwargs["target"], None)
+        self.assertEqual(notify_payload["notification_channel"], "")
+        self.assertEqual(notify_payload["notification_target"], "")
+        self.assertEqual(notify_payload["notify_on"], [])
+        self.assertEqual(result["notification_result"]["run_status"], "skipped")
+
+    def test_pushplus_notifier_builds_request_and_summary(self):
+        from clawradar.notifiers.pushplus.service import send_pushplus_notification
+
+        payload = {
+            "request_id": "req-notify-001",
+            "run_status": "completed",
+            "final_stage": "deliver",
+            "decision_status": "publish_ready",
+            "notification_reason": "publish_succeeded",
+            "delivery_channel": "wechat",
+            "delivery_target": "wechat://draft-box/openclaw-review",
+            "output_root": "F:/outputs/user_topic/20260420_0332",
+            "delivery_receipt": {
+                "events": [
+                    {"status": "delivered", "failure_info": None},
+                    {"status": "failed", "failure_info": {"message": "quota exceeded"}},
+                ]
+            },
+        }
+        response = Mock()
+        response.json.return_value = {"code": 200, "msg": "ok", "data": "msg-id-1"}
+        response.raise_for_status.return_value = None
+
+        with patch("clawradar.notifiers.pushplus.service.requests.post", return_value=response) as mocked_post:
+            result = send_pushplus_notification(
+                payload,
+                notification_target="pushplus://channel/ops-room",
+                options={"pushplus": {"token": "token-123"}},
+            )
+
+        request_body = mocked_post.call_args.kwargs["json"]
+        self.assertEqual(request_body["token"], "token-123")
+        self.assertEqual(request_body["channel"], "ops-room")
+        self.assertEqual(request_body["template"], "markdown")
+        self.assertIn("ClawRadar 通知", request_body["title"])
+        self.assertIn("**请求 ID**：req-notify-001", request_body["content"])
+        self.assertIn("**失败交付数**：1", request_body["content"])
+        self.assertIn("**首个错误**：quota exceeded", request_body["content"])
+        self.assertEqual(result["channel"], "pushplus")
+        self.assertEqual(result["metadata"]["pushplus_channel"], "ops-room")
+        self.assertEqual(result["metadata"]["provider_code"], 200)
+        self.assertEqual(result["metadata"]["provider_data"], "msg-id-1")
+
+    def test_pushplus_notifier_loads_token_from_local_env_file(self):
+        from clawradar.notifiers.pushplus.service import send_pushplus_notification
+
+        payload = {
+            "request_id": "req-notify-003",
+            "run_status": "completed",
+            "final_stage": "deliver",
+            "decision_status": "publish_ready",
+            "notification_reason": "publish_succeeded",
+        }
+        response = Mock()
+        response.json.return_value = {"code": 200, "msg": "ok", "data": "msg-id-2"}
+        response.raise_for_status.return_value = None
+
+        with patch("clawradar.notifiers.pushplus.service.PUSHPLUS_ENV_FILE") as mocked_env_path, patch(
+            "clawradar.notifiers.pushplus.service.dotenv_values", return_value={"PUSHPLUS_TOKEN": "env-token-123"}
+        ), patch("clawradar.notifiers.pushplus.service.requests.post", return_value=response) as mocked_post:
+            mocked_env_path.exists.return_value = True
+            result = send_pushplus_notification(
+                payload,
+                notification_target="pushplus://default",
+                options={},
+            )
+
+        request_body = mocked_post.call_args.kwargs["json"]
+        self.assertEqual(request_body["token"], "env-token-123")
+        self.assertEqual(result["metadata"]["provider_data"], "msg-id-2")
+
+    def test_pushplus_notifier_raises_when_provider_returns_failure(self):
+        from clawradar.notifiers.pushplus.service import PushPlusNotificationError, send_pushplus_notification
+
+        payload = {
+            "request_id": "req-notify-002",
+            "run_status": "failed",
+            "final_stage": "write",
+            "decision_status": "need_more_evidence",
+            "notification_reason": "run_failed",
+        }
+        response = Mock()
+        response.json.return_value = {"code": 500, "msg": "rate limited"}
+        response.raise_for_status.return_value = None
+
+        with patch("clawradar.notifiers.pushplus.service.requests.post", return_value=response):
+            with self.assertRaises(PushPlusNotificationError) as ctx:
+                send_pushplus_notification(
+                    payload,
+                    notification_target="pushplus://default",
+                    options={"pushplus": {"token": "token-123"}},
+                )
+
 
 
 if __name__ == "__main__":
