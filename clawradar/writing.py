@@ -17,12 +17,12 @@ from urllib.parse import urlparse
 
 from .scoring import ScoreDecisionStatus, ScoreRunStatus, ScoreValidationError, validate_score_payload
 
-
 MAX_WECHAT_TITLE_CHARS = 64
 MAX_WECHAT_TITLE_UTF8_BYTES = MAX_WECHAT_TITLE_CHARS * 4
 MAX_WECHAT_AUTHOR_CHARS = 8
 MAX_WECHAT_DIGEST_TEXT_UNITS = 120
 MAX_WECHAT_DIGEST_UTF8_BYTES = MAX_WECHAT_DIGEST_TEXT_UNITS * 4
+
 
 
 class WriteRunStatus(str, Enum):
@@ -1005,6 +1005,14 @@ def _build_external_writer_bundle(
     return bundle, writer_receipt
 
 
+def _is_retryable_external_writer_error(exc: Exception) -> bool:
+    try:
+        from radar_engines.ReportEngine.llms import is_retryable_stream_error
+    except Exception:
+        return False
+    return is_retryable_stream_error(exc)
+
+
 def _build_external_writer_failure(
     normalized_payload: Dict[str, Any],
     *,
@@ -1076,6 +1084,60 @@ def _topic_radar_write_external(normalized_payload: Dict[str, Any], *, operation
     writer_receipts: List[Dict[str, Any]] = []
     errors: List[Dict[str, Any]] = []
 
+    try:
+        agent = agent_factory(config_overrides=_build_report_engine_config_overrides(normalized_payload))
+    except TypeError:
+        agent = agent_factory()
+    except Exception as exc:
+        writer_receipts = [
+            {
+                "event_id": str(event.get("event_id") or "").strip(),
+                "executor": WriteExecutor.EXTERNAL_WRITER.value,
+                "status": WriteRunStatus.FAILED.value,
+                "operation": operation,
+                "query": str(event.get("event_title") or event.get("event_id") or "").strip(),
+                "failure_info": {
+                    "code": WriteErrorCode.WRITER_UNAVAILABLE.value,
+                    "message": str(exc),
+                },
+            }
+            for event in publish_ready_events
+        ]
+        return _build_external_writer_failure(
+            normalized_payload,
+            operation=operation,
+            code=WriteErrorCode.WRITER_UNAVAILABLE,
+            message=str(exc),
+            write_requests=write_requests,
+            writer_receipts=writer_receipts,
+        )
+
+    try:
+        _assert_external_writer_connectivity(agent)
+    except Exception as exc:
+        writer_receipts = [
+            {
+                "event_id": str(event.get("event_id") or "").strip(),
+                "executor": WriteExecutor.EXTERNAL_WRITER.value,
+                "status": WriteRunStatus.FAILED.value,
+                "operation": operation,
+                "query": str(event.get("event_title") or event.get("event_id") or "").strip(),
+                "failure_info": {
+                    "code": WriteErrorCode.WRITER_UNAVAILABLE.value,
+                    "message": str(exc),
+                },
+            }
+            for event in publish_ready_events
+        ]
+        return _build_external_writer_failure(
+            normalized_payload,
+            operation=operation,
+            code=WriteErrorCode.WRITER_UNAVAILABLE,
+            message=str(exc),
+            write_requests=write_requests,
+            writer_receipts=writer_receipts,
+        )
+
     for scored_event in publish_ready_events:
         evidence_packet = _build_evidence_packet(scored_event)
         write_request = _build_external_writer_request(
@@ -1084,90 +1146,49 @@ def _topic_radar_write_external(normalized_payload: Dict[str, Any], *, operation
             evidence_packet,
             operation=operation,
         )
-        write_requests.append(deepcopy(write_request))
+        write_requests.append(write_request)
         reports, forum_logs = _build_external_writer_inputs(write_request, scored_event)
 
-        try:
-            agent = agent_factory(config_overrides=_build_report_engine_config_overrides(normalized_payload))
-        except TypeError:
-            agent = agent_factory()
-        except Exception as exc:
-            writer_receipts.append(
-                {
-                    "event_id": write_request["event_id"],
-                    "executor": WriteExecutor.EXTERNAL_WRITER.value,
-                    "status": WriteRunStatus.FAILED.value,
-                    "operation": operation,
-                    "query": write_request["query"],
-                    "failure_info": {
-                        "code": WriteErrorCode.WRITER_UNAVAILABLE.value,
-                        "message": str(exc),
-                    },
-                }
-            )
-            errors.append(
-                {
-                    "code": WriteErrorCode.WRITER_UNAVAILABLE.value,
-                    "message": str(exc),
-                    "missing_fields": [],
-                }
-            )
-            continue
-
-        try:
-            _assert_external_writer_connectivity(agent)
-        except Exception as exc:
-            writer_receipts.append(
-                {
-                    "event_id": write_request["event_id"],
-                    "executor": WriteExecutor.EXTERNAL_WRITER.value,
-                    "status": WriteRunStatus.FAILED.value,
-                    "operation": operation,
-                    "query": write_request["query"],
-                    "failure_info": {
-                        "code": WriteErrorCode.WRITER_UNAVAILABLE.value,
-                        "message": str(exc),
-                    },
-                }
-            )
-            errors.append(
-                {
-                    "code": WriteErrorCode.WRITER_UNAVAILABLE.value,
-                    "message": str(exc),
-                    "missing_fields": [],
-                }
-            )
-            continue
-
-        try:
-            generation_result = agent.generate_report(
-                query=write_request["query"],
-                reports=reports,
-                forum_logs=forum_logs,
-                custom_template=write_request["custom_template"],
-                save_report=True,
-            )
-        except Exception as exc:
-            writer_receipts.append(
-                {
-                    "event_id": write_request["event_id"],
-                    "executor": WriteExecutor.EXTERNAL_WRITER.value,
-                    "status": WriteRunStatus.FAILED.value,
-                    "operation": operation,
-                    "query": write_request["query"],
-                    "failure_info": {
+        generation_result = None
+        last_generation_error: Optional[Exception] = None
+        for generation_attempt in range(2):
+            try:
+                generation_result = agent.generate_report(
+                    query=write_request["query"],
+                    reports=reports,
+                    forum_logs=forum_logs,
+                    custom_template=write_request["custom_template"],
+                    save_report=True,
+                )
+                last_generation_error = None
+                break
+            except Exception as exc:
+                last_generation_error = exc
+                should_retry = generation_attempt == 0 and _is_retryable_external_writer_error(exc)
+                if should_retry:
+                    continue
+                writer_receipts.append(
+                    {
+                        "event_id": write_request["event_id"],
+                        "executor": WriteExecutor.EXTERNAL_WRITER.value,
+                        "status": WriteRunStatus.FAILED.value,
+                        "operation": operation,
+                        "query": write_request["query"],
+                        "failure_info": {
+                            "code": WriteErrorCode.EXTERNAL_WRITER_FAILED.value,
+                            "message": str(exc),
+                        },
+                    }
+                )
+                errors.append(
+                    {
                         "code": WriteErrorCode.EXTERNAL_WRITER_FAILED.value,
                         "message": str(exc),
-                    },
-                }
-            )
-            errors.append(
-                {
-                    "code": WriteErrorCode.EXTERNAL_WRITER_FAILED.value,
-                    "message": str(exc),
-                    "missing_fields": [],
-                }
-            )
+                        "missing_fields": [],
+                    }
+                )
+                break
+        if last_generation_error is not None:
             continue
 
         if not isinstance(generation_result, dict) or _is_blank(generation_result.get("html_content")):

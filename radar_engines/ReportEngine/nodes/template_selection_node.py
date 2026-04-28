@@ -70,6 +70,11 @@ class TemplateSelectionNode(BaseNode):
             logger.info("未找到预设模板，使用内置默认模板")
             return self._get_fallback_template()
         
+        # 先尝试确定性规则，处理明显的微信公众号写作场景
+        rule_result = self._rule_based_template_selection(query, reports, forum_logs, available_templates)
+        if rule_result:
+            return rule_result
+
         # 使用LLM进行模板选择
         try:
             llm_result = self._llm_template_selection(query, reports, forum_logs, available_templates)
@@ -255,9 +260,66 @@ class TemplateSelectionNode(BaseNode):
         
         return templates
     
+    def _rule_based_template_selection(
+        self,
+        query: str,
+        reports: List[Any],
+        forum_logs: str,
+        available_templates: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        对明确的公众号场景做确定性模板匹配。
+
+        这样可以让“快评 / 深度解读 / 周报 / 辟谣 / 风险提示”这类
+        高意图输入优先落到对应模板，减少对 LLM 选择稳定性的依赖。
+        """
+        query_text = f"{query}\n{forum_logs}".lower()
+        template_lookup = {template["name"]: template for template in available_templates}
+
+        rules = [
+            (
+                ["辟谣", "风险提示", "误读", "澄清", "假消息", "谣言", "辟谣稿"],
+                "微信公众号风险提示与辟谣模板",
+            ),
+            (
+                ["周报", "周更", "周度", "周刊", "周报稿", "周更栏目", "周度观察", "月报", "月更"],
+                "微信公众号行业观察周报模板",
+            ),
+            (
+                ["深度解读", "深度分析", "长文", "详解", "拆解", "解读", "政策影响", "行业趋势", "技术变化"],
+                "微信公众号深度解读文章模板",
+            ),
+            (
+                ["快评", "速评", "热点", "爆点", "突发", "当日", "即时", "快讯", "抢先看"],
+                "微信公众号热点快评文章模板",
+            ),
+        ]
+
+        if any(token in query_text for token in ["公众号", "微信公众号", "微信推送", "推送", "文章", "长文", "快评", "周报", "辟谣", "风险提示"]):
+            for keywords, template_name in rules:
+                if any(keyword in query_text for keyword in keywords):
+                    template = template_lookup.get(template_name)
+                    if template:
+                        logger.info(f"命中确定性模板规则: {template_name}")
+                        return {
+                            "template_name": template["name"],
+                            "template_content": template["content"],
+                            "selection_reason": f"规则命中: {template_name}",
+                        }
+
     def _extract_template_description(self, template_name: str) -> str:
         """根据模板名称生成描述，方便LLM理解模板定位。"""
-        if '企业品牌' in template_name:
+        if '热点快评' in template_name:
+            return "适用于公众号热点事件快评和时效性观点输出"
+        elif '深度解读' in template_name:
+            return "适用于公众号长文解读、趋势分析与背景说明"
+        elif '行业观察周报' in template_name:
+            return "适用于公众号栏目化周报、月报和多事件盘点"
+        elif '风险提示' in template_name or '辟谣' in template_name:
+            return "适用于公众号辟谣、风险提醒与误读纠偏"
+        elif '公众号' in template_name or '微信' in template_name:
+            return "适用于微信公众号文章输出和外部传播场景"
+        elif '企业品牌' in template_name:
             return "适用于企业品牌声誉和形象分析"
         elif '市场竞争' in template_name:
             return "适用于市场竞争格局和对手分析"
@@ -269,9 +331,8 @@ class TemplateSelectionNode(BaseNode):
             return "适用于社会热点和公共事件分析"
         elif '突发' in template_name or '危机' in template_name:
             return "适用于突发事件和危机公关"
-        
+
         return "通用报告模板"
-    
 
     
     def _get_fallback_template(self) -> Dict[str, Any]:

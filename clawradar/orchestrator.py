@@ -25,6 +25,7 @@ from .scoring import (
 )
 from .topics import TopicRunStatus, UserTopicValidationError, build_crawl_results, build_topic_cards, load_user_topic_payload
 from .writing import WriteExecutor, WriteOperation, WriteRunStatus, build_write_rejection, topic_radar_write
+from .notifications import build_notification_payload, topic_radar_notify
 
 
 class OrchestratorExecutionMode(str, Enum):
@@ -1182,6 +1183,7 @@ def _persist_run_outputs(
     delivery_receipt: Optional[Dict[str, Any]],
     score_results: Optional[Dict[str, Any]],
     delivery_result: Optional[Dict[str, Any]],
+    notification_result: Optional[Dict[str, Any]],
     stage_results: Dict[str, Any],
 ) -> Dict[str, str]:
     output_context = payload.get("output_context") if isinstance(payload.get("output_context"), dict) else {}
@@ -1220,6 +1222,7 @@ def _persist_run_outputs(
         "write": deepcopy(stage_results.get("write")) if isinstance(stage_results.get("write"), dict) else None,
         "delivery_receipt": deepcopy(delivery_receipt) if isinstance(delivery_receipt, dict) else None,
         "deliver": deepcopy(delivery_result) if isinstance(delivery_result, dict) else None,
+        "notification": deepcopy(notification_result) if isinstance(notification_result, dict) else None,
     }
 
     persist(debug_root / "input.json", debug_payload["input"])
@@ -1239,6 +1242,7 @@ def _persist_run_outputs(
     persist(debug_root / "write.json", debug_payload["write"])
     persist(debug_root / "delivery_receipt.json", debug_payload["delivery_receipt"])
     persist(debug_root / "deliver.json", debug_payload["deliver"])
+    persist(debug_root / "notification.json", debug_payload["notification"])
     persist(summary_path, deepcopy(run_summary))
     persist(recovery_summary_path, {
         "recovery_used": bool((run_summary or {}).get("recovery_used")),
@@ -1276,8 +1280,25 @@ def _persist_run_outputs(
         persist(debug_root / "delivery_receipt.json", deepcopy(delivery_receipt))
     if isinstance(delivery_result, dict):
         persist(debug_root / "deliver.json", deepcopy(delivery_result))
+    if isinstance(notification_result, dict):
+        persist(debug_root / "notification.json", deepcopy(notification_result))
 
     return manifest
+
+
+
+def _notify_final_result(result: Dict[str, Any], *, payload: Dict[str, Any], runs_root: Optional[Path]) -> Dict[str, Any]:
+    notification_payload = deepcopy(result)
+    if isinstance(payload.get("entry_options"), dict):
+        notification_payload["entry_options"] = deepcopy(payload["entry_options"])
+    notification_result = topic_radar_notify(
+        build_notification_payload(notification_payload),
+        runs_root=runs_root,
+    )
+    final_result = deepcopy(result)
+    final_result["notification_result"] = notification_result
+    final_result["notification_receipt"] = deepcopy(notification_result.get("notification_receipt"))
+    return final_result
 
 
 
@@ -1417,6 +1438,45 @@ def _finalize_orchestration(
         "write": deepcopy(write_result) if isinstance(write_result, dict) else None,
         "deliver": deepcopy(deliver_result) if isinstance(deliver_result, dict) else None,
     }
+    notification_result = _notify_final_result(
+        {
+            "request_id": request_id,
+            "trigger_source": trigger_source,
+            "trigger_context": {
+                "source": trigger_source,
+                "is_single_event_rerun": trigger_source == OrchestratorTriggerSource.SINGLE_EVENT_RERUN.value,
+                "target_event_ids": requested_event_ids_list,
+            },
+            "execution_mode": execution_mode,
+            "run_status": run_status,
+            "decision_status": decision_status,
+            "final_stage": final_stage,
+            "entry_resolution": deepcopy(entry_resolution) if isinstance(entry_resolution, dict) else None,
+            "stage_statuses": stage_statuses,
+            "artifact_summary": artifact_summary,
+            "requested_event_ids": requested_event_ids_list,
+            "processed_event_ids": processed_event_ids,
+            "event_statuses": event_statuses,
+            "crawl_results": crawl_results,
+            "topic_cards": topic_cards,
+            "normalized_events": normalized_events,
+            "scored_events": scored_events,
+            "content_bundles": content_bundles,
+            "delivery_receipt": delivery_receipt,
+            "score_results": deepcopy(score_result) if isinstance(score_result, dict) else None,
+            "delivery_result": deepcopy(deliver_result) if isinstance(deliver_result, dict) else None,
+            "run_summary": deepcopy(run_summary),
+            "stage_results": deepcopy(stage_results),
+            "errors": errors,
+            "output_context": output_context,
+            "output_root": (output_context or {}).get("output_root"),
+        },
+        payload=payload,
+        runs_root=Path((output_context or {}).get("output_root")) if (output_context or {}).get("output_root") else None,
+    )["notification_result"]
+    if isinstance(notification_result.get("notification_receipt"), dict):
+        run_summary["notification_receipt"] = deepcopy(notification_result["notification_receipt"])
+
     output_manifest = _persist_run_outputs(
         payload=payload,
         entry_resolution=entry_resolution,
@@ -1432,10 +1492,11 @@ def _finalize_orchestration(
         delivery_receipt=delivery_receipt,
         score_results=deepcopy(score_result) if isinstance(score_result, dict) else None,
         delivery_result=deepcopy(deliver_result) if isinstance(deliver_result, dict) else None,
+        notification_result=deepcopy(notification_result),
         stage_results=stage_results,
     )
 
-    return {
+    result = {
         "request_id": request_id,
         "trigger_source": trigger_source,
         "trigger_context": {
@@ -1463,11 +1524,14 @@ def _finalize_orchestration(
         "delivery_result": deepcopy(deliver_result) if isinstance(deliver_result, dict) else None,
         "run_summary": run_summary,
         "stage_results": stage_results,
+        "notification_result": deepcopy(notification_result),
+        "notification_receipt": deepcopy(notification_result.get("notification_receipt")),
         "errors": errors,
         "output_context": output_context,
         "output_root": (output_context or {}).get("output_root"),
         "output_manifest": output_manifest,
     }
+    return result
 
 
 

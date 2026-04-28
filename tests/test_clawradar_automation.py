@@ -222,6 +222,11 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(result["processed_event_ids"], ["evt-stage2-001"])
         self.assertEqual(result["event_statuses"][0]["event_id"], "evt-stage2-001")
         self.assertEqual(result["event_statuses"][0]["deliver_status"], "delivered")
+        self.assertIn("notification_result", result)
+        self.assertIn("notification_receipt", result)
+        self.assertTrue((self._run_output_root(result) / "debug" / "notification.json").exists())
+
+    def test_formal_default_flow_uses_external_writer_and_archive_only_delivery(self):
         payload = self._load_fixture("clawradar_score_publish_ready_input.json")
         fake_result = {
             "html_content": "<html><body><h1>综合报告</h1><p>默认正式路径调用外部写作。</p></body></html>",
@@ -250,9 +255,9 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         tmpdir = self._workspace_tmpdir("automation-")
         with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()):
             result = topic_radar_orchestrate(payload, runs_root=Path(tmpdir))
+
         self.assertTrue(self._run_output_root(result).exists())
         self.assertTrue((self._run_output_root(result) / "summary.json").exists())
-
         self.assertEqual(result["run_status"], "completed")
         self.assertEqual(result["final_stage"], "deliver")
         self.assertEqual(result["entry_resolution"]["write"]["requested_executor"], "external_writer")
@@ -272,6 +277,72 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(result["event_statuses"][0]["artifact_summary"]["delivery_receipt_status"], "archived")
         self.assertEqual(result["artifact_summary"]["delivered_count"], 0)
         self.assertTrue(result["delivery_receipt"]["events"][0]["archive_path"])
+
+    def test_external_writer_outer_retry_success_marks_write_succeeded(self):
+        payload = self._build_publish_ready_pipeline_payload()
+        payload["entry_options"] = {
+            "write": {"executor": "external_writer"},
+            "delivery": {"enabled": False},
+        }
+        fake_result = {
+            "html_content": "<html><body><h1>综合报告</h1><p>重试后成功。</p></body></html>",
+            "report_title": "综合报告",
+            "report_id": "report-orch-retry-success",
+            "report_filepath": "/tmp/orch_retry_success.html",
+            "report_relative_path": "outputs/reports/orch_retry_success.html",
+            "ir_filepath": "/tmp/orch_retry_success_ir.json",
+            "ir_relative_path": "outputs/reports/ir/orch_retry_success_ir.json",
+            "state_filepath": "/tmp/orch_retry_success_state.json",
+            "state_relative_path": "outputs/reports/orch_retry_success_state.json",
+        }
+        calls = {"count": 0}
+
+        class FakeAgent:
+            def generate_report(self, **kwargs):
+                calls["count"] += 1
+                if calls["count"] == 1:
+                    raise RuntimeError("peer closed connection without sending complete message body (incomplete chunked read)")
+                return fake_result
+
+        with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()), patch(
+            "clawradar.writing._assert_external_writer_connectivity"
+        ), patch("clawradar.writing._is_retryable_external_writer_error", return_value=True):
+            result = topic_radar_orchestrate(payload)
+
+        self.assertEqual(calls["count"], 2)
+        self.assertEqual(result["run_status"], "completed")
+        self.assertEqual(result["final_stage"], "write")
+        self.assertEqual(result["stage_statuses"]["write"]["status"], "succeeded")
+        self.assertEqual(result["event_statuses"][0]["write_status"], "generated")
+        self.assertEqual(result["event_statuses"][0]["deliver_status"], "skipped")
+        self.assertEqual(result["content_bundles"][0]["writer_receipt"]["report_id"], "report-orch-retry-success")
+
+    def test_external_writer_outer_retry_exhausted_keeps_write_failed(self):
+        payload = self._build_publish_ready_pipeline_payload()
+        payload["entry_options"] = {
+            "write": {"executor": "external_writer"},
+            "delivery": {"enabled": True, "target_mode": "archive_only", "channel": "archive_only", "target": "archive://clawradar"},
+        }
+        calls = {"count": 0}
+
+        class FakeAgent:
+            def generate_report(self, **kwargs):
+                calls["count"] += 1
+                raise RuntimeError("peer closed connection without sending complete message body (incomplete chunked read)")
+
+        with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()), patch(
+            "clawradar.writing._assert_external_writer_connectivity"
+        ), patch("clawradar.writing._is_retryable_external_writer_error", return_value=True):
+            result = topic_radar_orchestrate(payload)
+
+        self.assertEqual(calls["count"], 2)
+        self.assertEqual(result["run_status"], "failed")
+        self.assertEqual(result["final_stage"], "write")
+        self.assertEqual(result["stage_statuses"]["write"]["status"], "failed")
+        self.assertEqual(result["stage_statuses"]["deliver"]["status"], "skipped")
+        self.assertEqual(result["event_statuses"][0]["write_status"], "failed")
+        self.assertEqual(result["event_statuses"][0]["deliver_status"], "skipped")
+        self.assertEqual(result["errors"][0]["code"], WriteErrorCode.EXTERNAL_WRITER_FAILED.value)
 
     def test_formal_launcher_builds_deliverable_defaults(self):
         module_path = Path(__file__).resolve().parents[1] / "run_openclaw_deliverable.py"
@@ -294,6 +365,12 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             trigger_source="manual",
             execution_mode="full_pipeline",
             runs_root="",
+            delivery_channel="archive_only",
+            delivery_target="",
+            notification_channel="pushplus",
+            notification_target="pushplus://default",
+            notify_on=["run_failed", "publish_succeeded"],
+            pushplus_token="token-123",
         )
 
         payload = module._build_payload(args)
@@ -302,6 +379,10 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(payload["entry_options"]["write"]["executor"], "external_writer")
         self.assertEqual(payload["entry_options"]["delivery"]["target_mode"], "archive_only")
         self.assertEqual(payload["entry_options"]["delivery"]["target"], "archive://clawradar")
+        self.assertEqual(payload["entry_options"]["notification"]["channel"], "pushplus")
+        self.assertEqual(payload["entry_options"]["notification"]["target"], "pushplus://default")
+        self.assertEqual(payload["entry_options"]["notification"]["notify_on"], ["run_failed", "publish_succeeded"])
+        self.assertEqual(payload["entry_options"]["notification"]["pushplus"]["token"], "token-123")
         self.assertEqual(payload["entry_options"]["degrade"]["input_unavailable"], "fail")
         self.assertEqual(payload["entry_options"]["degrade"]["write_unavailable"], "fail")
         self.assertEqual(payload["entry_options"]["degrade"]["delivery_unavailable"], "fail")
@@ -344,6 +425,10 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
             delivery_target="wechat://draft-box/openclaw-review",
             target_event_id="evt-stage2-001",
             force_republish=True,
+            notification_channel="pushplus",
+            notification_target="pushplus://default",
+            notify_on=["publish_failed"],
+            pushplus_token="token-456",
             runs_root="",
         )
 
@@ -359,6 +444,10 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(mocked_kwargs["delivery_target"], "wechat://draft-box/openclaw-review")
         self.assertEqual(mocked_kwargs["target_event_id"], "evt-stage2-001")
         self.assertEqual(mocked_kwargs["force_republish"], True)
+        self.assertEqual(mocked_kwargs["notification_channel"], "pushplus")
+        self.assertEqual(mocked_kwargs["notification_target"], "pushplus://default")
+        self.assertEqual(mocked_kwargs["notify_on"], ["publish_failed"])
+        self.assertEqual(mocked_kwargs["notification_options"], {"pushplus": {"token": "token-456"}})
 
     def test_full_pipeline_persists_traceable_archive_and_audit_recovery_objects(self):
         payload = self._build_publish_ready_pipeline_payload()

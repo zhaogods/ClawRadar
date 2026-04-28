@@ -1,4 +1,4 @@
-"""ClawRadar 阶段一 ingest、阶段二 score、阶段三 write、阶段四 deliver 与阶段五 orchestrator 能力入口。"""
+"""ClawRadar 阶段一 ingest、阶段二 score、阶段三 write、阶段四 deliver、阶段五 orchestrator 与通知入口。"""
 
 from .contracts import (
     ErrorCode,
@@ -16,6 +16,18 @@ from .delivery import (
     build_feishu_delivery_message,
     topic_radar_deliver,
     validate_delivery_payload,
+)
+from .notifications import (
+    NotificationChannel,
+    NotificationErrorCode,
+    NotificationReason,
+    NotificationRunStatus,
+    NotificationValidationError,
+    build_notification_payload,
+    build_notification_rejection,
+    build_notification_summary,
+    sanitize_notification_payload,
+    topic_radar_notify,
 )
 from .orchestrator import (
     OrchestratorErrorCode,
@@ -60,6 +72,16 @@ __all__ = [
     "build_feishu_delivery_message",
     "topic_radar_deliver",
     "validate_delivery_payload",
+    "NotificationChannel",
+    "NotificationErrorCode",
+    "NotificationReason",
+    "NotificationRunStatus",
+    "NotificationValidationError",
+    "build_notification_payload",
+    "build_notification_rejection",
+    "build_notification_summary",
+    "sanitize_notification_payload",
+    "topic_radar_notify",
     "OrchestratorErrorCode",
     "OrchestratorExecutionMode",
     "OrchestratorRunStatus",
@@ -83,3 +105,4 @@ __all__ = [
     "topic_radar_write",
     "validate_write_payload",
 ]
+

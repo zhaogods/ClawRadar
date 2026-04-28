@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .delivery import topic_radar_deliver
+from .notifications import build_notification_payload, sanitize_notification_payload, topic_radar_notify
 from .scoring import ScoreDecisionStatus
 
 
@@ -145,8 +146,6 @@ def _pick_content_bundle(bundles: List[Dict[str, Any]], *, target_event_id: Opti
         raise ValueError(f"target event not found in publish source: {target_event_id}")
     if len(bundles) == 1:
         return deepcopy(bundles[0])
-    # Modern outputs may contain multiple generated reports under one run.
-    # In publish-only mode, default to the most recently generated report.
     return _select_latest_content_bundle(bundles)
 
 
@@ -167,7 +166,7 @@ def _build_publish_payload_from_payload_snapshot(path: Path) -> Dict[str, Any]:
     payload_copy = deepcopy(payload)
     payload_copy["content_bundles"] = [deepcopy(payload_copy["content_bundle"])]
     payload_copy["decision_status"] = ScoreDecisionStatus.PUBLISH_READY.value
-    return payload_copy
+    return sanitize_notification_payload(payload_copy)
 
 
 def _latest_pointer_content_bundles_candidates(runs_root: Path) -> List[Path]:
@@ -290,6 +289,31 @@ def _find_successful_record(records: List[Dict[str, Any]], *, content_hash: str)
     return None
 
 
+def _merge_notification_entry(
+    payload: Dict[str, Any],
+    *,
+    notification_channel: Optional[str],
+    notification_target: Optional[str],
+    notification_options: Optional[Dict[str, Any]],
+    notify_on: Optional[List[str]],
+) -> None:
+    if not any([notification_channel, notification_target, notification_options, notify_on]):
+        return
+    entry_options = payload.get("entry_options") if isinstance(payload.get("entry_options"), dict) else {}
+    notification_entry = entry_options.get("notification") if isinstance(entry_options.get("notification"), dict) else {}
+    if notification_channel:
+        notification_entry["channel"] = notification_channel
+    if notification_target:
+        notification_entry["target"] = notification_target
+    if notify_on is not None:
+        notification_entry["notify_on"] = list(notify_on)
+    if isinstance(notification_options, dict):
+        for key, value in deepcopy(notification_options).items():
+            notification_entry[key] = value
+    entry_options["notification"] = notification_entry
+    payload["entry_options"] = entry_options
+
+
 def publish_existing_output(
     *,
     runs_root: Optional[Path] = None,
@@ -298,6 +322,10 @@ def publish_existing_output(
     delivery_target: str,
     target_event_id: Optional[str] = None,
     force_republish: bool = False,
+    notification_channel: Optional[str] = None,
+    notification_target: Optional[str] = None,
+    notification_options: Optional[Dict[str, Any]] = None,
+    notify_on: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     source = resolve_publish_source(
         runs_root=runs_root,
@@ -324,12 +352,22 @@ def publish_existing_output(
             },
             "publish_record": existing,
             "delivery_result": None,
+            "notification_result": None,
             "errors": [],
         }
 
     payload = deepcopy(source.payload)
     payload["delivery_channel"] = delivery_channel
     payload["delivery_target"] = delivery_target
+    payload["output_root"] = source.run_root.as_posix()
+    payload["output_context"] = {"output_root": source.run_root.as_posix()}
+    _merge_notification_entry(
+        payload,
+        notification_channel=notification_channel,
+        notification_target=notification_target,
+        notification_options=notification_options,
+        notify_on=notify_on,
+    )
 
     result = topic_radar_deliver(
         payload,
@@ -364,6 +402,27 @@ def publish_existing_output(
     }
     _append_publish_record(records_path, record)
 
+    notification_payload = {
+        **deepcopy(result),
+        "output_root": source.run_root.as_posix(),
+        "output_context": {"output_root": source.run_root.as_posix()},
+        "entry_options": deepcopy(payload.get("entry_options") or {}),
+        "delivery_channel": delivery_channel,
+        "delivery_target": delivery_target,
+    }
+    notification_result = topic_radar_notify(
+        build_notification_payload(
+            notification_payload,
+            channel=notification_channel,
+            target=notification_target,
+            notify_on=notify_on,
+            notification_options=notification_options,
+        ),
+        channel=notification_channel,
+        target=notification_target,
+        runs_root=source.run_root,
+    )
+
     return {
         "run_status": result.get("run_status"),
         "skip_reason": None,
@@ -374,5 +433,6 @@ def publish_existing_output(
         },
         "publish_record": record,
         "delivery_result": result,
+        "notification_result": notification_result,
         "errors": deepcopy(result.get("errors") or []),
     }

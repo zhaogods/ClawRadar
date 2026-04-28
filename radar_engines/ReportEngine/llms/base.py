@@ -11,6 +11,16 @@ from loguru import logger
 
 from openai import OpenAI
 
+try:  # pragma: no cover - 兼容不同openai版本的异常导出
+    from openai import APIConnectionError, APITimeoutError
+except ImportError:  # pragma: no cover
+    APIConnectionError = APITimeoutError = tuple()  # type: ignore[assignment]
+
+try:  # pragma: no cover - httpx 可能不存在于极简环境
+    import httpx
+except ImportError:  # pragma: no cover
+    httpx = None  # type: ignore[assignment]
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))
 utils_dir = os.path.join(project_root, "utils")
@@ -28,6 +38,57 @@ except ImportError:
         return decorator
 
     LLM_RETRY_CONFIG = None
+
+
+_STREAM_RETRYABLE_MESSAGE_FRAGMENTS = (
+    "incomplete chunked read",
+    "peer closed connection",
+    "connection reset",
+    "connection aborted",
+    "server disconnected",
+    "remoteprotocolerror",
+    "read timeout",
+    "timed out",
+    "temporarily unavailable",
+)
+
+
+def _walk_exception_chain(error: BaseException):
+    current = error
+    seen = set()
+    while current is not None and id(current) not in seen:
+        yield current
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+
+
+def is_retryable_stream_error(error: BaseException) -> bool:
+    """判断异常链是否属于可重试的临时流式/网络传输失败。"""
+    for candidate in _walk_exception_chain(error):
+        if APIConnectionError and isinstance(candidate, APIConnectionError):
+            return True
+        if APITimeoutError and isinstance(candidate, APITimeoutError):
+            return True
+        if isinstance(candidate, (ConnectionError, TimeoutError, OSError)):
+            message = str(candidate).lower()
+            if any(fragment in message for fragment in _STREAM_RETRYABLE_MESSAGE_FRAGMENTS):
+                return True
+        if httpx is not None and isinstance(
+            candidate,
+            (
+                httpx.ConnectError,
+                httpx.ReadError,
+                httpx.ReadTimeout,
+                httpx.TimeoutException,
+                httpx.RemoteProtocolError,
+                httpx.NetworkError,
+            ),
+        ):
+            return True
+        message = str(candidate).lower()
+        if message and any(fragment in message for fragment in _STREAM_RETRYABLE_MESSAGE_FRAGMENTS):
+            return True
+    return False
 
 
 class LLMClient:
@@ -102,12 +163,12 @@ class LLMClient:
     def stream_invoke(self, system_prompt: str, user_prompt: str, **kwargs) -> Generator[str, None, None]:
         """
         流式调用LLM，逐步返回响应内容。
-        
+
         参数:
             system_prompt: 系统提示词。
             user_prompt: 用户提示词。
             **kwargs: 采样参数（temperature、top_p等）。
-            
+
         产出:
             str: 每次yield一段delta文本，方便上层实时渲染。
         """
@@ -130,7 +191,7 @@ class LLMClient:
                 timeout=timeout,
                 **extra_params,
             )
-            
+
             for chunk in stream:
                 if chunk.choices and len(chunk.choices) > 0:
                     delta = chunk.choices[0].delta
@@ -139,17 +200,17 @@ class LLMClient:
         except Exception as e:
             logger.error(f"流式请求失败: {str(e)}")
             raise e
-    
+
     @with_retry(LLM_RETRY_CONFIG)
     def stream_invoke_to_string(self, system_prompt: str, user_prompt: str, **kwargs) -> str:
         """
         流式调用LLM并安全地拼接为完整字符串（避免UTF-8多字节字符截断）。
-        
+
         参数:
             system_prompt: 系统提示词。
             user_prompt: 用户提示词。
             **kwargs: 采样或超时配置。
-            
+
         返回:
             str: 将所有delta拼接后的完整响应。
         """
@@ -157,7 +218,7 @@ class LLMClient:
         byte_chunks = []
         for chunk in self.stream_invoke(system_prompt, user_prompt, **kwargs):
             byte_chunks.append(chunk.encode('utf-8'))
-        
+
         # 拼接所有字节，然后一次性解码
         if byte_chunks:
             return b''.join(byte_chunks).decode('utf-8', errors='replace')

@@ -26,7 +26,7 @@ from .core import (
     parse_template_sections,
 )
 from .ir import IRValidator
-from .llms import LLMClient
+from .llms import LLMClient, is_retryable_stream_error
 from .nodes import (
     TemplateSelectionNode,
     ChapterGenerationNode,
@@ -700,27 +700,47 @@ class ReportAgent:
                         attempt += 1
                         continue
                     except Exception as chapter_error:
-                        if not self._should_retry_inappropriate_content_error(chapter_error):
-                            raise
-                        logger.warning(
-                            "章节 {title} 触发内容安全限制（第 {attempt}/{total} 次尝试），准备重新生成: {error}",
-                            title=section.title,
-                            attempt=attempt,
-                            total=chapter_max_attempts,
-                            error=chapter_error,
-                        )
-                        emit('chapter_status', {
-                            'chapterId': section.chapter_id,
-                            'title': section.title,
-                            'status': 'retrying' if attempt < chapter_max_attempts else 'error',
-                            'attempt': attempt,
-                            'error': str(chapter_error),
-                            'reason': 'content_filter'
-                        })
-                        if attempt >= chapter_max_attempts:
-                            raise
-                        attempt += 1
-                        continue
+                        if self._should_retry_inappropriate_content_error(chapter_error):
+                            logger.warning(
+                                "章节 {title} 触发内容安全限制（第 {attempt}/{total} 次尝试），准备重新生成: {error}",
+                                title=section.title,
+                                attempt=attempt,
+                                total=chapter_max_attempts,
+                                error=chapter_error,
+                            )
+                            emit('chapter_status', {
+                                'chapterId': section.chapter_id,
+                                'title': section.title,
+                                'status': 'retrying' if attempt < chapter_max_attempts else 'error',
+                                'attempt': attempt,
+                                'error': str(chapter_error),
+                                'reason': 'content_filter'
+                            })
+                            if attempt >= chapter_max_attempts:
+                                raise
+                            attempt += 1
+                            continue
+                        if is_retryable_stream_error(chapter_error):
+                            logger.warning(
+                                "章节 {title} 流式传输异常（第 {attempt}/{total} 次尝试），准备重新生成: {error}",
+                                title=section.title,
+                                attempt=attempt,
+                                total=chapter_max_attempts,
+                                error=chapter_error,
+                            )
+                            emit('chapter_status', {
+                                'chapterId': section.chapter_id,
+                                'title': section.title,
+                                'status': 'retrying' if attempt < chapter_max_attempts else 'error',
+                                'attempt': attempt,
+                                'error': str(chapter_error),
+                                'reason': 'stream_transport_error'
+                            })
+                            if attempt >= chapter_max_attempts:
+                                raise
+                            attempt += 1
+                            continue
+                        raise
                 if chapter_payload is None:
                     raise ChapterJsonParseError(
                         f"{section.title} 章节JSON在 {chapter_max_attempts} 次尝试后仍无法解析"

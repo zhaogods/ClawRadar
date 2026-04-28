@@ -14,6 +14,10 @@ from clawradar.writing import (
 )
 
 
+class RetryableStreamError(RuntimeError):
+    pass
+
+
 class ClawRadarWritingTestCase(unittest.TestCase):
     def setUp(self):
         self.fixtures_dir = Path(__file__).parent / "fixtures"
@@ -309,6 +313,76 @@ class ClawRadarWritingTestCase(unittest.TestCase):
         self.assertIn("summary_rewrite_feedback", write_request["writing_brief"])
         self.assertEqual(write_request["writing_brief"]["existing_summary"]["wechat"], "这是旧微信摘要。")
         self.assertLessEqual(len(summary["channel_variants"]["wechat"]), MAX_WECHAT_DIGEST_TEXT_UNITS)
+
+    def test_external_writer_retries_once_on_retryable_stream_error_then_succeeds(self):
+        payload = self._load_fixture("clawradar_write_publish_ready_input.json")
+        fake_result = {
+            "html_content": "<html><body><h1>综合报告</h1><p>重试后成功。</p></body></html>",
+            "report_title": "综合报告",
+            "report_id": "report-stage8-retry-success",
+            "report_filepath": "/tmp/final_report.html",
+            "report_relative_path": "outputs/reports/final_report.html",
+            "ir_filepath": "/tmp/report_ir.json",
+            "ir_relative_path": "outputs/reports/ir/report_ir.json",
+            "state_filepath": "/tmp/report_state.json",
+            "state_relative_path": "outputs/reports/report_state.json",
+        }
+        calls = {"count": 0}
+
+        class FakeAgent:
+            def generate_report(self, **kwargs):
+                calls["count"] += 1
+                if calls["count"] == 1:
+                    raise RetryableStreamError("peer closed connection without sending complete message body (incomplete chunked read)")
+                return fake_result
+
+        with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()), patch(
+            "clawradar.writing._assert_external_writer_connectivity"
+        ), patch("clawradar.writing._is_retryable_external_writer_error", return_value=True):
+            result = topic_radar_write(payload, executor=WriteExecutor.EXTERNAL_WRITER.value)
+
+        self.assertEqual(calls["count"], 2)
+        self.assertEqual(result["run_status"], "succeeded")
+        self.assertEqual(len(result["content_bundles"]), 1)
+        self.assertEqual(result["writer_receipts"][0]["status"], "succeeded")
+        self.assertEqual(result["errors"], [])
+
+    def test_external_writer_reports_failure_after_outer_retry_exhausted(self):
+        payload = self._load_fixture("clawradar_write_publish_ready_input.json")
+        calls = {"count": 0}
+
+        class FakeAgent:
+            def generate_report(self, **kwargs):
+                calls["count"] += 1
+                raise RetryableStreamError("peer closed connection without sending complete message body (incomplete chunked read)")
+
+        with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()), patch(
+            "clawradar.writing._assert_external_writer_connectivity"
+        ), patch("clawradar.writing._is_retryable_external_writer_error", return_value=True):
+            result = topic_radar_write(payload, executor=WriteExecutor.EXTERNAL_WRITER.value)
+
+        self.assertEqual(calls["count"], 2)
+        self.assertEqual(result["run_status"], "failed")
+        self.assertEqual(result["errors"][0]["code"], "external_writer_failed")
+        self.assertEqual(result["writer_receipts"][0]["failure_info"]["code"], "external_writer_failed")
+
+    def test_external_writer_does_not_retry_non_retryable_error(self):
+        payload = self._load_fixture("clawradar_write_publish_ready_input.json")
+        calls = {"count": 0}
+
+        class FakeAgent:
+            def generate_report(self, **kwargs):
+                calls["count"] += 1
+                raise RuntimeError("writer boom")
+
+        with patch("clawradar.writing._get_report_engine_agent_factory", return_value=lambda: FakeAgent()), patch(
+            "clawradar.writing._assert_external_writer_connectivity"
+        ), patch("clawradar.writing._is_retryable_external_writer_error", return_value=False):
+            result = topic_radar_write(payload, executor=WriteExecutor.EXTERNAL_WRITER.value)
+
+        self.assertEqual(calls["count"], 1)
+        self.assertEqual(result["run_status"], "failed")
+        self.assertEqual(result["errors"][0]["code"], "external_writer_failed")
 
     def test_external_writer_fails_fast_when_connectivity_preflight_fails(self):
         payload = self._load_fixture("clawradar_write_publish_ready_input.json")
