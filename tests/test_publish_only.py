@@ -146,7 +146,7 @@ class PublishOnlyTestCase(unittest.TestCase):
             result = publish_existing_output(
                 runs_root=runs_root,
                 delivery_channel="wechat",
-                delivery_target="wechat://draft-box/openclaw-review",
+                delivery_target="wechat://draft-box/clawradar-review",
             )
 
         self.assertEqual(result["run_status"], "completed")
@@ -186,7 +186,7 @@ class PublishOnlyTestCase(unittest.TestCase):
             first = publish_existing_output(
                 runs_root=runs_root,
                 delivery_channel="wechat",
-                delivery_target="wechat://draft-box/openclaw-review",
+                delivery_target="wechat://draft-box/clawradar-review",
             )
         self.assertEqual(first["run_status"], "completed")
 
@@ -194,7 +194,7 @@ class PublishOnlyTestCase(unittest.TestCase):
             second = publish_existing_output(
                 runs_root=runs_root,
                 delivery_channel="wechat",
-                delivery_target="wechat://draft-box/openclaw-review",
+                delivery_target="wechat://draft-box/clawradar-review",
             )
 
         self.assertEqual(second["run_status"], "skipped")
@@ -226,7 +226,7 @@ class PublishOnlyTestCase(unittest.TestCase):
             first = publish_existing_output(
                 runs_root=runs_root,
                 delivery_channel="wechat",
-                delivery_target="wechat://draft-box/openclaw-review",
+                delivery_target="wechat://draft-box/clawradar-review",
             )
         self.assertEqual(first["run_status"], "completed")
 
@@ -238,7 +238,7 @@ class PublishOnlyTestCase(unittest.TestCase):
             second = publish_existing_output(
                 runs_root=runs_root,
                 delivery_channel="wechat",
-                delivery_target="wechat://draft-box/openclaw-review",
+                delivery_target="wechat://draft-box/clawradar-review",
             )
 
         self.assertEqual(second["run_status"], "completed")
@@ -275,7 +275,7 @@ class PublishOnlyTestCase(unittest.TestCase):
             result = publish_existing_output(
                 publish_file=payload_snapshot,
                 delivery_channel="wechat",
-                delivery_target="wechat://draft-box/openclaw-review",
+                delivery_target="wechat://draft-box/clawradar-review",
             )
 
         self.assertEqual(result["run_status"], "completed")
@@ -317,7 +317,7 @@ class PublishOnlyTestCase(unittest.TestCase):
             result = publish_existing_output(
                 runs_root=runs_root,
                 delivery_channel="wechat",
-                delivery_target="wechat://draft-box/openclaw-review",
+                delivery_target="wechat://draft-box/clawradar-review",
             )
 
         delivered_payload = mocked_deliver.call_args.args[0]
@@ -343,7 +343,7 @@ class PublishOnlyTestCase(unittest.TestCase):
             "event_id": "evt-new",
             "delivery_receipt": {
                 "delivery_channel": "wechat",
-                "delivery_target": "wechat://draft-box/openclaw-review",
+                "delivery_target": "wechat://draft-box/clawradar-review",
                 "events": [
                     {
                         "status": "delivered",
@@ -373,7 +373,7 @@ class PublishOnlyTestCase(unittest.TestCase):
             result = publish_existing_output(
                 runs_root=runs_root,
                 delivery_channel="wechat",
-                delivery_target="wechat://draft-box/openclaw-review",
+                delivery_target="wechat://draft-box/clawradar-review",
                 notification_channel="pushplus",
                 notification_target="pushplus://default",
                 notification_options={"pushplus": {"token": "token-123"}},
@@ -396,7 +396,7 @@ class PublishOnlyTestCase(unittest.TestCase):
         self.assertEqual(notify_payload["entry_options"]["notification"]["notify_on"], ["publish_succeeded"])
         self.assertNotIn("token", notify_payload["entry_options"]["notification"].get("pushplus", {}))
         self.assertEqual(notify_payload["delivery_channel"], "wechat")
-        self.assertEqual(notify_payload["delivery_target"], "wechat://draft-box/openclaw-review")
+        self.assertEqual(notify_payload["delivery_target"], "wechat://draft-box/clawradar-review")
 
     def test_publish_only_skips_notification_when_not_configured(self):
         runs_root = self._workspace_tmpdir("publish-only-notify-skip-")
@@ -427,7 +427,7 @@ class PublishOnlyTestCase(unittest.TestCase):
             result = publish_existing_output(
                 runs_root=runs_root,
                 delivery_channel="wechat",
-                delivery_target="wechat://draft-box/openclaw-review",
+                delivery_target="wechat://draft-box/clawradar-review",
             )
 
         mocked_notify.assert_called_once()
@@ -449,7 +449,7 @@ class PublishOnlyTestCase(unittest.TestCase):
             "decision_status": "publish_ready",
             "notification_reason": "publish_succeeded",
             "delivery_channel": "wechat",
-            "delivery_target": "wechat://draft-box/openclaw-review",
+            "delivery_target": "wechat://draft-box/clawradar-review",
             "output_root": "F:/outputs/user_topic/20260420_0332",
             "delivery_receipt": {
                 "events": [

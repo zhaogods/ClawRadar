@@ -13,7 +13,7 @@ from clawradar.publish_only import publish_existing_output
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run OpenClaw one-day deliverable flow")
+    parser = argparse.ArgumentParser(description="Run ClawRadar one-day deliverable flow")
     parser.add_argument("--input-mode", choices=["real_source", "user_topic"], default="real_source")
     parser.add_argument("--topic", default="")
     parser.add_argument("--company", default="")
@@ -22,7 +22,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--keywords", nargs="*", default=[])
     parser.add_argument("--source-ids", nargs="*", default=["weibo"])
     parser.add_argument("--limit", type=int, default=5)
-    parser.add_argument("--request-id", default="req-openclaw-deliverable")
+    parser.add_argument("--request-id", default="req-clawradar-deliverable")
     parser.add_argument("--trigger-source", default="manual")
     parser.add_argument("--execution-mode", default="full_pipeline")
     parser.add_argument("--runs-root", default="")

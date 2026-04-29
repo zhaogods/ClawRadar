@@ -266,7 +266,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_channel_uses_channel_specific_message_file(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         payload["entry_options"] = {
             "delivery": {
                 "wechat": {
@@ -339,7 +339,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_channel_normalizes_title_author_and_digest_before_upload(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         payload["author"] = "超长作者名甲乙丙丁戊己庚辛壬癸作者"
         payload["content_bundle"]["title"]["text"] = "这是一个超过六十四个字符的微信公众号标题用于验证发布前归一化是否生效并确保新限制已正确放宽到平台最新规则"
         payload["content_bundle"]["summary"] = {
@@ -407,7 +407,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_channel_reports_token_failure_in_chinese(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         tmpdir = self._workspace_tmpdir("delivery-wechat-token-failure-")
         channel_env = Path("clawradar/publishers/wechat/.env")
         original_env = channel_env.read_text(encoding="utf-8") if channel_env.exists() else None
@@ -456,7 +456,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_channel_prefers_report_html_over_dirty_draft_markdown_with_tables_and_lists(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         payload["content_bundle"]["draft"]["body_markdown"] = "Dirty prefix // Chart.js - embedded bundle"
         tmpdir = self._workspace_tmpdir("delivery-wechat-html-")
         report_path = Path(tmpdir) / "report.html"
@@ -546,7 +546,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_channel_placeholder_mode_replaces_visual_media(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         payload["delivery_options"] = {"report_image_mode": "placeholder"}
         tmpdir = self._workspace_tmpdir("delivery-wechat-placeholder-")
         report_path = Path(tmpdir) / "report.html"
@@ -616,7 +616,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_channel_upload_mode_keeps_uploaded_img(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         payload["delivery_options"] = {"report_image_mode": "upload"}
         tmpdir = self._workspace_tmpdir("delivery-wechat-upload-")
         image_path = Path(tmpdir) / "chart.png"
@@ -689,7 +689,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_channel_upload_mode_renders_chart_payload_as_img(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         payload["delivery_options"] = {"report_image_mode": "upload"}
         tmpdir = self._workspace_tmpdir("delivery-wechat-chart-upload-")
         report_path = Path(tmpdir) / "report.html"
@@ -778,7 +778,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_channel_prefers_report_html_over_dirty_draft_markdown(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         payload["content_bundle"]["draft"]["body_markdown"] = "Dirty prefix // Chart.js - embedded bundle"
         tmpdir = self._workspace_tmpdir("delivery-wechat-html-")
         report_path = Path(tmpdir) / "report.html"
@@ -854,7 +854,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_delivery_prefers_channel_specific_summary_variant(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         payload["content_bundle"]["summary"] = {
             "version": 1,
             "text": "通用摘要文本。",
@@ -910,7 +910,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_delivery_retries_title_once_on_45003_and_succeeds(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         payload["normalized_events"][0]["company"] = "OpenAI"
         payload["content_bundle"]["title"]["text"] = "AI大模型调用量逆转，算力涨价谁买单：面向企业落地的深度观察报告——围绕模型、算力、采购与治理的超长标题扩展说明，用于验证45003重试是否真正触发"
         tmpdir = self._workspace_tmpdir("delivery-wechat-45003-retry-")
@@ -998,7 +998,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_delivery_reports_attempted_titles_when_45003_retry_still_fails(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         payload["normalized_events"][0]["company"] = "OpenAI"
         payload["content_bundle"]["title"]["text"] = "AI大模型调用量逆转，算力涨价谁买单：面向企业落地的深度观察报告——围绕模型、算力、采购与治理的超长标题扩展说明，用于验证45003失败后仍会保留重试痕迹"
 
@@ -1082,7 +1082,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_delivery_retries_digest_once_on_45004_and_succeeds(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         payload["normalized_events"][0]["company"] = "OpenAI"
         payload["content_bundle"]["title"]["text"] = "AI算力涨价潮：供需关系重构与行业阵痛"
         payload["content_bundle"]["summary"] = {
@@ -1207,7 +1207,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
     def test_wechat_delivery_reports_failed_digests_when_45004_retry_still_fails(self):
         payload = self._load_fixture("clawradar_deliver_publish_ready_input.json")
         payload["delivery_channel"] = "wechat"
-        payload["delivery_target"] = "wechat://draft-box/openclaw-review"
+        payload["delivery_target"] = "wechat://draft-box/clawradar-review"
         payload["normalized_events"][0]["company"] = "OpenAI"
         payload["content_bundle"]["title"]["text"] = "AI算力涨价潮：供需关系重构与行业阵痛"
         payload["content_bundle"]["summary"] = {

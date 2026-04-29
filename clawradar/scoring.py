@@ -1,4 +1,4 @@
-"""阶段二：OpenClaw score contract 与结构化评分实现。"""
+"""阶段二：ClawRadar score contract 与结构化评分实现。"""
 
 from __future__ import annotations
 

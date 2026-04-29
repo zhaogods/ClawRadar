@@ -1,4 +1,4 @@
-"""阶段四：OpenClaw 可调用交付能力。"""
+"""阶段四：ClawRadar 可调用交付能力。"""
 
 from __future__ import annotations
 
@@ -483,7 +483,7 @@ def build_feishu_delivery_message(payload: Dict[str, Any], content_bundle: Dict[
         "channel": DeliveryChannel.FEISHU.value,
         "template_id": "clawradar_feishu_summary_v1",
         "msg_type": "post",
-        "title": f"OpenClaw 交付｜{title_text}",
+        "title": f"ClawRadar 交付｜{title_text}",
         "body_markdown": body_markdown,
         "metadata": {
             "request_id": str(payload.get("request_id") or "").strip(),
@@ -982,7 +982,7 @@ def topic_radar_deliver(
                         write_result = topic_radar_write(
                             write_payload,
                             operation=WriteOperation.REGENERATE_SUMMARY.value,
-                            executor="openclaw_builtin",
+                            executor="clawradar_builtin",
                         )
                         refreshed_bundles = write_result.get("content_bundles") if isinstance(write_result, dict) else []
                         if refreshed_bundles and isinstance(refreshed_bundles[0], dict):

@@ -51,7 +51,7 @@ ClawRadar 官方仓库地址：
 始终以仓库里的正式入口为准：
 
 - Python API：`from clawradar.orchestrator import topic_radar_orchestrate`
-- 推荐 CLI 入口：`python run_openclaw_deliverable.py`
+- 推荐 CLI 入口：`python run_clawradar_deliverable.py`
 
 如果未来仓库里出现其他辅助脚本，它们也只是便利封装，不是新的事实来源。
 
@@ -138,7 +138,7 @@ python -m pip install pytest
 
 ## 推荐执行规则
 
-1. 默认优先使用 `run_openclaw_deliverable.py`
+1. 默认优先使用 `run_clawradar_deliverable.py`
 2. 只有在用户明确要求 Python 级调用时，才直接使用 API
 3. 遇到现成工件时优先恢复，而不是重建
 4. 遇到缺失依赖时先报告环境问题
@@ -165,25 +165,25 @@ python -m pip install pytest
 ### 从 `user_topic` 启动完整流程
 
 ```bash
-python run_openclaw_deliverable.py --input-mode user_topic --topic "OpenAI 企业级智能体平台" --company "OpenAI" --keywords 智能体 企业服务
+python run_clawradar_deliverable.py --input-mode user_topic --topic "OpenAI 企业级智能体平台" --company "OpenAI" --keywords 智能体 企业服务
 ```
 
 ### 从 `real_source` 启动完整流程
 
 ```bash
-python run_openclaw_deliverable.py --input-mode real_source --source-ids weibo --limit 5
+python run_clawradar_deliverable.py --input-mode real_source --source-ids weibo --limit 5
 ```
 
 ### 从评分结果恢复
 
 ```bash
-python run_openclaw_deliverable.py --scored-events-file scored_events.json --execution-mode resume
+python run_clawradar_deliverable.py --scored-events-file scored_events.json --execution-mode resume
 ```
 
 ### 只执行交付阶段
 
 ```bash
-python run_openclaw_deliverable.py --content-bundle-file content_bundle.json --execution-mode deliver_only
+python run_clawradar_deliverable.py --content-bundle-file content_bundle.json --execution-mode deliver_only
 ```
 
 ### Python API 调用
@@ -219,7 +219,7 @@ print(result.get("run_status"), result.get("final_stage"))
 
 - 当前目录确实是 ClawRadar 仓库根目录
 - 存在 `clawradar/` 目录
-- 存在 `run_openclaw_deliverable.py`
+- 存在 `run_clawradar_deliverable.py`
 - 默认输出会写入仓库根目录下的 `outputs/`
 - 依赖已经安装
 - 需要外部能力时，环境变量和凭证已经配置

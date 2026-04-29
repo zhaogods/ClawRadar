@@ -294,7 +294,7 @@ def _retryable_wechat_title(
         company = str(normalized_events[0].get("company") or "").strip()
     if not company:
         company = str(content_bundle.get("company") or "").strip()
-    fallback = str(content_bundle.get("event_id") or "OpenClaw Report").strip() or "OpenClaw Report"
+    fallback = str(content_bundle.get("event_id") or "ClawRadar Report").strip() or "ClawRadar Report"
     current_title = str(title_text or "").strip()
     retry_max_chars = max_chars
     if current_title and len(current_title) <= max_chars:

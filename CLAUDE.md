@@ -38,14 +38,14 @@ python -m pytest tests/test_clawradar_automation.py -k "test_manual_full_pipelin
 Run the main launcher:
 
 ```bash
-python run_openclaw_deliverable.py --input-mode real_source --source-ids weibo --limit 5
-python run_openclaw_deliverable.py --input-mode user_topic --topic "AI 智能体治理" --company "OpenAI" --keywords 治理 审计
+python run_clawradar_deliverable.py --input-mode real_source --source-ids weibo --limit 5
+python run_clawradar_deliverable.py --input-mode user_topic --topic "AI 智能体治理" --company "OpenAI" --keywords 治理 审计
 ```
 
 Replay an existing publish output:
 
 ```bash
-python run_openclaw_deliverable.py --publish-only --delivery-channel wechat --delivery-target "wechat://draft-box/openclaw-review"
+python run_clawradar_deliverable.py --publish-only --delivery-channel wechat --delivery-target "wechat://draft-box/clawradar-review"
 ```
 
 Run the real-source demo:
@@ -119,13 +119,13 @@ A run directory contains:
 
 - WeChat publisher code lives under `clawradar/publishers/wechat/`.
 - WeChat credentials are channel-local, not repo-root `.env` files.
-- `run_openclaw_deliverable.py` defaults to `archive_only` delivery unless told otherwise.
+- `run_clawradar_deliverable.py` defaults to `archive_only` delivery unless told otherwise.
 
 ## What to inspect first
 
 If you need to understand a change quickly, start with:
 
-1. `run_openclaw_deliverable.py`
+1. `run_clawradar_deliverable.py`
 2. `clawradar/orchestrator.py`
 3. `clawradar/contracts.py`
 4. `clawradar/scoring.py`

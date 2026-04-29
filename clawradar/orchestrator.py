@@ -93,10 +93,10 @@ _TRIGGER_SOURCE_ALIASES = {
 _VALID_TRIGGER_SOURCES = {item.value for item in OrchestratorTriggerSource}
 
 _ENTRY_INPUT_MODES = {"inline_candidates", "inline_normalized", "inline_topic_cards", "real_source", "user_topic"}
-_ENTRY_WRITE_EXECUTORS = {"openclaw_builtin", "external_writer"}
+_ENTRY_WRITE_EXECUTORS = {"clawradar_builtin", "external_writer"}
 _ENTRY_DELIVERY_TARGET_MODES = {"feishu", "wechat", "wechat_official_account", "archive_only"}
 _ENTRY_INPUT_DEGRADE_STRATEGIES = {"fail", "fallback_inline_candidates", "fallback_inline_normalized"}
-_ENTRY_WRITE_DEGRADE_STRATEGIES = {"fail", "fallback_openclaw_builtin", "skip"}
+_ENTRY_WRITE_DEGRADE_STRATEGIES = {"fail", "fallback_clawradar_builtin", "skip"}
 _ENTRY_DELIVERY_DEGRADE_STRATEGIES = {"fail", "archive_only"}
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
@@ -131,7 +131,7 @@ def _write_json(path: Path, payload: Any) -> None:
 
 
 def _resolve_output_context(payload: Dict[str, Any], runs_root: Optional[Path], *, mode: str) -> Dict[str, str]:
-    request_id = str(payload.get("request_id") or "openclaw-run").strip() or "openclaw-run"
+    request_id = str(payload.get("request_id") or "clawradar-run").strip() or "clawradar-run"
     run_id = _shanghai_run_id()
     started_at = _utc_timestamp()
     base_root = Path(runs_root or DEFAULT_RUNS_ROOT).resolve()
@@ -2298,21 +2298,21 @@ def topic_radar_orchestrate(
 
         if write_result.get("run_status") != WriteRunStatus.SUCCEEDED.value:
             write_strategy = entry_resolution["degrade"]["strategies"]["write_unavailable"]
-            if entry_resolution["write"]["executor"] == WriteExecutor.EXTERNAL_WRITER.value and write_strategy == "fallback_openclaw_builtin":
+            if entry_resolution["write"]["executor"] == WriteExecutor.EXTERNAL_WRITER.value and write_strategy == "fallback_clawradar_builtin":
                 _record_entry_fallback(
                     entry_resolution,
                     category="write",
                     requested="external_writer",
-                    applied="openclaw_builtin",
-                    reason="external_writer failed and degrade strategy fell back to openclaw_builtin",
+                    applied="clawradar_builtin",
+                    reason="external_writer failed and degrade strategy fell back to clawradar_builtin",
                 )
-                entry_resolution["write"]["executor"] = "openclaw_builtin"
-                write_payload["executor"] = WriteExecutor.OPENCLAW_BUILTIN.value
+                entry_resolution["write"]["executor"] = "clawradar_builtin"
+                write_payload["executor"] = WriteExecutor.CLAWRADAR_BUILTIN.value
                 try:
                     write_result = topic_radar_write(
                         write_payload,
                         operation=entry_resolution["write"]["operation"],
-                        executor=WriteExecutor.OPENCLAW_BUILTIN.value,
+                        executor=WriteExecutor.CLAWRADAR_BUILTIN.value,
                     )
                 except Exception:
                     write_result = build_write_rejection(write_payload)

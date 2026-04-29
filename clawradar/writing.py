@@ -1,4 +1,4 @@
-"""阶段三：OpenClaw 可调用内容生成能力。"""
+"""阶段三：ClawRadar 可调用内容生成能力。"""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class WriteOperation(str, Enum):
 class WriteExecutor(str, Enum):
     """阶段八写作执行器类型。"""
 
-    OPENCLAW_BUILTIN = "openclaw_builtin"
+    CLAWRADAR_BUILTIN = "clawradar_builtin"
     EXTERNAL_WRITER = "external_writer"
 
 
@@ -65,7 +65,7 @@ WRITE_REQUIRED_FIELDS: Tuple[str, ...] = (
 )
 
 MAX_TITLE_TEXT_CHARS = MAX_WECHAT_TITLE_CHARS
-TITLE_FALLBACK_TEXT = "OpenClaw Report"
+TITLE_FALLBACK_TEXT = "ClawRadar Report"
 TITLE_COMPANY_SUFFIXES: Tuple[str, ...] = (
     "集团股份有限公司",
     "股份有限公司",
@@ -132,7 +132,7 @@ def _regenerate_wechat_summary(
     uncertainty_text: str,
     *,
     rewrite_feedback: Optional[Dict[str, Any]] = None,
-    fallback: str = "OpenClaw 摘要",
+    fallback: str = "ClawRadar 摘要",
 ) -> str:
     max_bytes = MAX_WECHAT_DIGEST_UTF8_BYTES
     max_chars = MAX_WECHAT_DIGEST_TEXT_UNITS
@@ -162,11 +162,11 @@ def _regenerate_wechat_summary(
         for candidate in _summary_candidates(group):
             if _utf8_length(candidate) <= max_bytes and len(candidate) <= max_chars:
                 return candidate
-    normalized_fallback = _normalize_summary_text(fallback) or "OpenClaw 摘要"
+    normalized_fallback = _normalize_summary_text(fallback) or "ClawRadar 摘要"
     return _truncate_text_units(
-        _truncate_utf8(normalized_fallback, max_bytes, "OpenClaw 摘要"),
+        _truncate_utf8(normalized_fallback, max_bytes, "ClawRadar 摘要"),
         max_chars,
-        "OpenClaw 摘要",
+        "ClawRadar 摘要",
     )
 
 
@@ -579,7 +579,7 @@ def _build_summary(
         top_fact_claim,
         uncertainty_text,
         rewrite_feedback=rewrite_feedback,
-        fallback=event_title or top_fact_claim or "OpenClaw 摘要",
+        fallback=event_title or top_fact_claim or "ClawRadar 摘要",
     )
     return {
         "version": 2 if regenerated else 1,
@@ -820,7 +820,7 @@ def _build_external_writer_request(
         or writing_brief.get("query")
         or scored_event.get("event_title")
         or scored_event.get("event_id")
-        or "OpenClaw Report"
+        or "ClawRadar Report"
     ).strip()
     existing_profile_constraints = (
         report_profile.get("title_constraints") if isinstance(report_profile.get("title_constraints"), dict) else {}
@@ -868,7 +868,7 @@ def _build_external_writer_inputs(write_request: Dict[str, Any], scored_event: D
     reports = [
         "\n".join(
             [
-                "# OpenClaw 选题与写作简报",
+                "# ClawRadar 选题与写作简报",
                 f"事件标题：{str(scored_event.get('event_title') or '').strip()}",
                 f"公司：{str(trace.get('company') or '').strip()}",
                 f"操作类型：{write_request['operation']}",
@@ -880,7 +880,7 @@ def _build_external_writer_inputs(write_request: Dict[str, Any], scored_event: D
         ),
         "\n".join(
             [
-                "# OpenClaw 证据与时间线",
+                "# ClawRadar 证据与时间线",
                 "## 时间线",
                 _json_dump(write_request["timeline"]),
                 "## 证据包",
@@ -889,7 +889,7 @@ def _build_external_writer_inputs(write_request: Dict[str, Any], scored_event: D
         ),
         "\n".join(
             [
-                "# OpenClaw 风险与约束",
+                "# ClawRadar 风险与约束",
                 "## 输出约束",
                 _json_dump(write_request["report_profile"]),
                 "## 风险标记",
@@ -1243,7 +1243,7 @@ def topic_radar_write(
     payload: Dict[str, Any],
     *,
     operation: str = WriteOperation.GENERATE.value,
-    executor: str = WriteExecutor.OPENCLAW_BUILTIN.value,
+    executor: str = WriteExecutor.CLAWRADAR_BUILTIN.value,
 ) -> Dict[str, Any]:
     """执行阶段三内容生成，支持 builtin 与 external_writer。"""
 
@@ -1277,7 +1277,7 @@ def topic_radar_write(
         "run_status": WriteRunStatus.SUCCEEDED.value,
         "decision_status": ScoreDecisionStatus.PUBLISH_READY.value,
         "operation": operation,
-        "executor": WriteExecutor.OPENCLAW_BUILTIN.value,
+        "executor": WriteExecutor.CLAWRADAR_BUILTIN.value,
         "content_bundles": content_bundles,
         "errors": [],
         "write_requests": [],
@@ -1305,7 +1305,7 @@ def build_write_rejection(
             "run_status": WriteRunStatus.FAILED.value,
             "decision_status": ScoreDecisionStatus.NEED_MORE_EVIDENCE.value,
             "operation": payload.get("operation", WriteOperation.GENERATE.value),
-            "executor": payload.get("executor", WriteExecutor.OPENCLAW_BUILTIN.value),
+            "executor": payload.get("executor", WriteExecutor.CLAWRADAR_BUILTIN.value),
             "content_bundles": [],
             "errors": [exc.to_error_response()],
             "write_requests": [],
@@ -1318,7 +1318,7 @@ def build_write_rejection(
         "run_status": WriteRunStatus.FAILED.value,
         "decision_status": payload.get("decision_status", ScoreDecisionStatus.NEED_MORE_EVIDENCE.value),
         "operation": payload.get("operation", WriteOperation.GENERATE.value),
-        "executor": payload.get("executor", WriteExecutor.OPENCLAW_BUILTIN.value),
+        "executor": payload.get("executor", WriteExecutor.CLAWRADAR_BUILTIN.value),
         "content_bundles": [],
         "errors": [
             {

@@ -90,7 +90,7 @@ def _load_settings():
             "ClawRadar.config",
             "BettaFish.config",
         ),
-        capability_label="OpenClaw settings",
+        capability_label="ClawRadar settings",
     )
     return module.settings
 
@@ -235,7 +235,7 @@ def _map_news_item_to_candidate(
             {
                 "timestamp": collected_at,
                 "label": "real_source_collected",
-                "summary": f"OpenClaw collected this candidate from MindSpider {source_name} trending feed",
+                "summary": f"ClawRadar collected this candidate from MindSpider {source_name} trending feed",
                 "source_url": source_url,
                 "source_type": f"mindspider:{source_id}",
             }
@@ -618,7 +618,7 @@ def _map_topic_search_item_to_candidate(
             {
                 "timestamp": collected_at,
                 "label": "user_topic_search_collected",
-                "summary": f"OpenClaw searched topic '{context.get('topic')}' via {source_name} and found this candidate",
+                "summary": f"ClawRadar searched topic '{context.get('topic')}' via {source_name} and found this candidate",
                 "source_url": source_url,
                 "source_type": source_type,
             }

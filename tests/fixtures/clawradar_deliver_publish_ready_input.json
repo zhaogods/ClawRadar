@@ -3,7 +3,7 @@
   "trigger_source": "manual",
   "decision_status": "publish_ready",
   "delivery_channel": "feishu",
-  "delivery_target": "feishu://chat/openclaw-review",
+  "delivery_target": "feishu://chat/clawradar-review",
   "normalized_events": [
     {
       "request_id": "req-stage4-001",

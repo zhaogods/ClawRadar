@@ -11,7 +11,7 @@ from typing import Any, Callable, Iterator
 from clawradar.orchestrator import topic_radar_orchestrate
 from clawradar.publish_only import publish_existing_output
 from clawradar.real_source import DEFAULT_REAL_SOURCE_IDS
-from run_openclaw_deliverable import _build_payload
+from run_clawradar_deliverable import _build_payload
 
 
 RUN_MODE_OPTIONS = [
@@ -210,7 +210,7 @@ def _prompt_multi_menu(
 
 def _default_delivery_target(delivery_channel: str) -> str:
     if delivery_channel == "wechat":
-        return "wechat://draft-box/openclaw-review"
+        return "wechat://draft-box/clawradar-review"
     return ""
 
 
@@ -478,7 +478,7 @@ def _collect_run_args() -> argparse.Namespace:
     request_id = _prompt_text(
         "request_id",
         "本次任务唯一标识，用于输出目录追踪。",
-        default="req-openclaw-deliverable",
+        default="req-clawradar-deliverable",
         required=True,
     )
     trigger_source = _prompt_text(
@@ -526,7 +526,7 @@ def _collect_run_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    print("OpenClaw 交互式启动")
+    print("ClawRadar 交互式启动")
     print("说明：按提示输入序号即可；带“默认”的项目可直接回车。")
     publish_only = _prompt_menu("运行模式", "选择要执行的操作。", RUN_MODE_OPTIONS, default_index=1)
     log_mode = _prompt_menu("日志模式", "选择运行时日志展示方式。", LOG_MODE_OPTIONS, default_index=1)

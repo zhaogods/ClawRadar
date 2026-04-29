@@ -1,4 +1,4 @@
-"""阶段一：BettaFish -> OpenClaw ingest contract。"""
+"""阶段一：BettaFish -> ClawRadar ingest contract。"""
 
 from __future__ import annotations
 
