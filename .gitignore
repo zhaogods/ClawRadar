@@ -10,7 +10,6 @@ __pycache__/
 .tmp/
 2026-04-14-164233-this-session-is-being-continued-from-a-previous-c.txt
 
-# Local rerun artifacts; keep checked-in stage10 baseline evidence files.
-project_protocol/stage10/demo_runs/*/20*-*/
+# (removed stale project_protocol/stage10 line — directory no longer exists)
 clawradar/publishers/wechat/.env
 clawradar/notifiers/pushplus/.env
