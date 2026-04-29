@@ -289,16 +289,13 @@ tmp/
 *~
 
 # ==== 配置和密钥 ====
-# 敏感配置文件
-/config.py
+# 敏感配置文件（Python config.py 为 pydantic Settings 类定义，不含实际密钥，需追踪）
 config.ini
 secrets.json
 .secrets
 *.key
 *.pem
 *.crt
-config.py
-MindSpider/config.py
 
 # API 密钥
 api_keys.txt
