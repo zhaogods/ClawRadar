@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -29,13 +30,16 @@ def _load_pushplus_token_from_env_file() -> str:
 
 def _resolve_pushplus_token(options: Dict[str, Any]) -> str:
     nested = options.get("pushplus") if isinstance(options.get("pushplus"), dict) else {}
-    env_token = _load_pushplus_token_from_env_file()
     for field in ("token", "access_key", "access-key"):
         value = str(nested.get(field) or options.get(field) or "").strip()
         if value:
             return value
+    env_token = _load_pushplus_token_from_env_file()
     if env_token:
         return env_token
+    os_token = os.environ.get("PUSHPLUS_TOKEN", "").strip()
+    if os_token:
+        return os_token
     raise PushPlusNotificationError("pushplus token is required")
 
 

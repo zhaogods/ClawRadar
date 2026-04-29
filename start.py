@@ -375,7 +375,7 @@ def _collect_notification_args() -> argparse.Namespace:
             ("", "不通知", "不发送额外状态通知。"),
             ("pushplus", "PushPlus", "通过 PushPlus 发送运行/发布摘要通知。"),
         ],
-        default_index=1,
+        default_index=2,
     )
     if not notification_channel:
         return argparse.Namespace(
@@ -395,19 +395,14 @@ def _collect_notification_args() -> argparse.Namespace:
         "notify_on",
         "选择哪些结果会触发通知。",
         NOTIFY_ON_OPTIONS,
-        default_values=["run_failed", "publish_failed", "publish_succeeded"],
+        default_values=["run_completed", "run_failed", "publish_succeeded", "publish_failed"],
         required=True,
-    )
-    pushplus_token = _prompt_text(
-        "pushplus_token",
-        "PushPlus token；留空则读取 clawradar/notifiers/pushplus/.env 中的 PUSHPLUS_TOKEN。",
-        required=False,
     )
     return argparse.Namespace(
         notification_channel=notification_channel,
         notification_target=notification_target,
         notify_on=notify_on,
-        pushplus_token=pushplus_token,
+        pushplus_token="",
     )
 
 
@@ -418,7 +413,7 @@ def _collect_publish_only_args() -> argparse.Namespace:
         "publish_file",
         "要重发的 content_bundles.json 或 payload_snapshot.json 文件路径；留空时自动选择最新输出。",
     )
-    delivery_channel = _prompt_menu("delivery_channel", "交付方式。", DELIVERY_CHANNEL_OPTIONS, default_index=1)
+    delivery_channel = _prompt_menu("delivery_channel", "交付方式。", DELIVERY_CHANNEL_OPTIONS, default_index=3)
     delivery_target = _prompt_text(
         "delivery_target",
         "交付目标地址；当选择飞书或微信时必填。",
@@ -499,7 +494,7 @@ def _collect_run_args() -> argparse.Namespace:
         required=True,
     )
     runs_root = _prompt_text("runs_root", "输出根目录；留空时使用项目默认 outputs 目录。")
-    delivery_channel = _prompt_menu("delivery_channel", "选择结果交付方式。", DELIVERY_CHANNEL_OPTIONS, default_index=1)
+    delivery_channel = _prompt_menu("delivery_channel", "选择结果交付方式。", DELIVERY_CHANNEL_OPTIONS, default_index=3)
     delivery_target = _prompt_text(
         "delivery_target",
         "交付目标地址；当选择飞书或微信时必填。",
