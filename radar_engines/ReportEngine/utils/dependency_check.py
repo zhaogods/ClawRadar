@@ -307,7 +307,7 @@ def check_pango_available():
                 + missing_note
                 + platform_instructions
                 + _box_line()
-                + _box_line("📖 文档：static/Partial README for PDF Exporting/README.md")
+                + _box_line("📖 文档：static/pdf-export-readme/README.md")
                 + box_bottom
             )
         return False, f"⚠ PDF 依赖加载失败: {error_msg}；缺失/未识别: {', '.join(missing_native) if missing_native else '未知'}"
@@ -333,7 +333,7 @@ def log_dependency_status():
     else:
         logger.warning(message)
         logger.info("💡 提示：PDF 导出功能需要 Pango 库支持，但不影响系统其他功能的正常使用")
-        logger.info("📚 安装说明请参考：static/Partial README for PDF Exporting/README.md")
+        logger.info("📚 安装说明请参考：static/pdf-export-readme/README.md")
 
     return is_available
 
