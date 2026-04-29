@@ -51,7 +51,7 @@ python run_clawradar_deliverable.py --publish-only --delivery-channel wechat --d
 Run the real-source demo:
 
 ```bash
-python scripts/run_real_source_demo.py
+python examples/run_real_source_demo.py
 ```
 
 MindSpider-only local workflow:
