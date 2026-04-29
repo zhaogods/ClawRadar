@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -21,6 +20,7 @@ from clawradar.writing import (
 
 from .image_handler import describe_image_policy, resolve_image_mode
 from .markdown_converter import convert_markdown_to_wechat_html
+from .publisher import WeChatPublisher
 from .report_html_cleaner import (
     build_wechat_article_from_report_html,
     html_fragment_to_text,
@@ -47,28 +47,6 @@ def _channel_env() -> Dict[str, str]:
         return {}
     loaded = dotenv_values(env_path)
     return {str(key): str(value) for key, value in loaded.items() if value is not None}
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-@lru_cache(maxsize=1)
-def _load_wechat_publisher_class():
-    module_path = _repo_root() / "third_party" / "wechat_publisher" / "publisher.py"
-    if not module_path.exists():
-        raise WeChatOfficialAccountPublishError(f"missing third_party publisher: {module_path}")
-
-    spec = importlib.util.spec_from_file_location("clawradar_third_party_wechat_publisher", module_path)
-    if spec is None or spec.loader is None:
-        raise WeChatOfficialAccountPublishError(f"unable to load publisher module: {module_path}")
-
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    publisher_class = getattr(module, "WeChatPublisher", None)
-    if publisher_class is None:
-        raise WeChatOfficialAccountPublishError("third_party publisher missing WeChatPublisher")
-    return publisher_class
 
 
 def _first_non_blank(*values: Any, default: str = "") -> str:
@@ -166,7 +144,7 @@ def _resolve_report_path(content_bundle: Dict[str, Any]) -> Optional[Path]:
                 continue
             candidate = Path(raw_path)
             if not candidate.is_absolute():
-                candidate = (_repo_root() / candidate).resolve()
+                candidate = (Path(__file__).resolve().parents[3] / candidate).resolve()
             if candidate.exists():
                 return candidate
     return None
@@ -348,8 +326,7 @@ def build_wechat_delivery_message(
     cover_image_path = _resolve_cover_image_path(payload, options)
     use_default_cover = _resolve_use_default_cover(options)
     report_image_mode = _resolve_report_image_mode(options)
-    publisher_class = _load_wechat_publisher_class()
-    publisher = publisher_class(appid, secret)
+    publisher = WeChatPublisher(appid, secret)
     access_token = publisher.get_access_token()
     if not access_token:
         detail = getattr(publisher, "last_error_message", None) or "获取微信 access_token 失败"

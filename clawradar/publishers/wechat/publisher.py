@@ -1,3 +1,5 @@
+"""WeChat Official Account API client — token, material upload, draft creation."""
+
 from __future__ import annotations
 
 import html

@@ -12,7 +12,7 @@ from clawradar.delivery import (
     topic_radar_deliver,
 )
 from clawradar.writing import MAX_WECHAT_DIGEST_TEXT_UNITS, MAX_WECHAT_DIGEST_UTF8_BYTES
-from third_party.wechat_publisher.publisher import WeChatDraftUploadError, WeChatPublisher
+from clawradar.publishers.wechat.publisher import WeChatDraftUploadError, WeChatPublisher
 
 
 class ClawRadarDeliveryTestCase(unittest.TestCase):
@@ -244,17 +244,11 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
         self.assertEqual(rejection["errors"][0]["code"], "delivery_target_required")
         self.assertEqual(rejection["delivery_receipt"]["events"][0]["failure_info"]["code"], "delivery_target_required")
 
-    def test_wechat_loader_imports_real_third_party_publisher_class(self):
-        from clawradar.publishers.wechat import service as wechat_service
+    def test_wechat_publisher_class_available_from_channel_package(self):
+        from clawradar.publishers.wechat.publisher import WeChatPublisher as PublisherClass
 
-        wechat_service._load_wechat_publisher_class.cache_clear()
-        try:
-            publisher_class = wechat_service._load_wechat_publisher_class()
-        finally:
-            wechat_service._load_wechat_publisher_class.cache_clear()
-
-        self.assertEqual(publisher_class.__name__, "WeChatPublisher")
-        publisher = publisher_class("wx-test-appid", "wx-test-secret")
+        self.assertEqual(PublisherClass.__name__, "WeChatPublisher")
+        publisher = PublisherClass("wx-test-appid", "wx-test-secret")
         for method_name in (
             "get_access_token",
             "upload_image",
@@ -301,7 +295,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 return "wechat-media-id"
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 from clawradar.publishers.wechat import service as wechat_service
                 wechat_service._channel_env.cache_clear()
                 result = topic_radar_deliver(
@@ -372,7 +366,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 return "wechat-media-id"
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 from clawradar.publishers.wechat import service as wechat_service
                 wechat_service._channel_env.cache_clear()
                 result = topic_radar_deliver(
@@ -423,7 +417,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 return None
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 from clawradar.publishers.wechat import service as wechat_service
                 wechat_service._channel_env.cache_clear()
                 result = topic_radar_deliver(
@@ -514,7 +508,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 return "wechat-media-id"
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 from clawradar.publishers.wechat import service as wechat_service
                 wechat_service._channel_env.cache_clear()
                 result = topic_radar_deliver(
@@ -590,7 +584,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 return "wechat-media-id"
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 from clawradar.publishers.wechat import service as wechat_service
                 wechat_service._channel_env.cache_clear()
                 topic_radar_deliver(
@@ -662,7 +656,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 return "wechat-media-id"
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 with patch("clawradar.publishers.wechat.image_handler.upload_wechat_article_image", return_value="https://mmbiz.qpic.cn/test-image"):
                     from clawradar.publishers.wechat import service as wechat_service
                     wechat_service._channel_env.cache_clear()
@@ -749,7 +743,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 return "wechat-media-id"
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 with patch("clawradar.publishers.wechat.image_handler.render_chart_container_to_png", return_value=Path(tmpdir) / "chart.png"):
                     with patch("clawradar.publishers.wechat.image_handler.upload_wechat_article_image", return_value="https://mmbiz.qpic.cn/chart-real-image"):
                         from clawradar.publishers.wechat import service as wechat_service
@@ -826,7 +820,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 return "wechat-media-id"
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 from clawradar.publishers.wechat import service as wechat_service
                 wechat_service._channel_env.cache_clear()
                 result = topic_radar_deliver(
@@ -884,7 +878,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 return "wechat-media-id"
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 from clawradar.publishers.wechat import service as wechat_service
                 wechat_service._channel_env.cache_clear()
                 result = topic_radar_deliver(
@@ -957,7 +951,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 return "wechat-media-id"
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 from clawradar.publishers.wechat import service as wechat_service
                 wechat_service._channel_env.cache_clear()
                 result = topic_radar_deliver(
@@ -1041,7 +1035,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 )
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 from clawradar.publishers.wechat import service as wechat_service
                 wechat_service._channel_env.cache_clear()
                 result = topic_radar_deliver(
@@ -1139,7 +1133,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 return "wechat-media-id"
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 from clawradar.publishers.wechat import service as wechat_service
                 wechat_service._channel_env.cache_clear()
                 result = topic_radar_deliver(
@@ -1259,7 +1253,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                 )
 
         try:
-            with patch("clawradar.publishers.wechat.service._load_wechat_publisher_class", return_value=FakePublisher):
+            with patch("clawradar.publishers.wechat.service.WeChatPublisher", new=FakePublisher):
                 from clawradar.publishers.wechat import service as wechat_service
                 wechat_service._channel_env.cache_clear()
                 result = topic_radar_deliver(
@@ -1331,7 +1325,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
             captured["extra_kwargs"] = kwargs
             return FakeResponse()
 
-        with patch("third_party.wechat_publisher.publisher.requests.post", side_effect=fake_post):
+        with patch("clawradar.publishers.wechat.publisher.requests.post", side_effect=fake_post):
             media_id = publisher.upload_draft(
                 title="中文标题甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥天地玄黄宇宙洪荒日月盈昃",
                 content="<p>正文</p>",
@@ -1370,7 +1364,7 @@ class ClawRadarDeliveryTestCase(unittest.TestCase):
                     "errmsg": "title size out of limit",
                 }
 
-        with patch("third_party.wechat_publisher.publisher.requests.post", return_value=FakeResponse()):
+        with patch("clawradar.publishers.wechat.publisher.requests.post", return_value=FakeResponse()):
             with self.assertRaises(WeChatDraftUploadError) as context:
                 publisher.upload_draft(
                     title="超长标题",
