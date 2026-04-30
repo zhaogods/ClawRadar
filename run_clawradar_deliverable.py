@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -22,6 +23,32 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--keywords", nargs="*", default=[])
     parser.add_argument("--source-ids", nargs="*", default=["weibo"])
     parser.add_argument("--limit", type=int, default=5)
+
+    # persist
+    parser.add_argument("--persist", action="store_true",
+                        help="Enable DB persistence for MindSpider hot news (writes daily_topics).")
+
+    # deep crawl
+    parser.add_argument("--deep-crawl", action="store_true",
+                        help="Enable DeepSentimentCrawling stage after scoring.")
+    parser.add_argument("--deep-crawl-platforms", nargs="*",
+                        default=["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu"],
+                        help="Social media platforms for deep crawl.")
+    parser.add_argument("--deep-crawl-max-keywords", type=int, default=50,
+                        help="Max keywords per platform for deep crawl.")
+    parser.add_argument("--deep-crawl-max-notes", type=int, default=50,
+                        help="Max notes per platform for deep crawl.")
+    parser.add_argument("--deep-crawl-test-mode", action="store_true",
+                        help="Use test mode for deep crawl (reduced volume).")
+
+    # server mode
+    parser.add_argument("--server-mode", action="store_true",
+                        help="Run headless on cloud server (forces headless, --no-sandbox, terminal QR code).")
+
+    # entry options JSON override
+    parser.add_argument("--entry-options", default="",
+                        help="JSON string to override entry_options (advanced).")
+
     parser.add_argument("--request-id", default="req-clawradar-deliverable")
     parser.add_argument("--trigger-source", default="manual")
     parser.add_argument("--execution-mode", default="full_pipeline")
@@ -54,28 +81,24 @@ def _build_payload(args: argparse.Namespace) -> dict:
     notification_target = str(getattr(args, "notification_target", "") or "").strip()
     notify_on = list(getattr(args, "notify_on", []) or [])
     notification_options = _build_notification_options(args)
-    input_options = {
-        "mode": args.input_mode,
-        "limit": args.limit,
-    }
+
+    input_options = {"mode": args.input_mode, "limit": args.limit}
     if args.input_mode == "real_source":
         input_options["source_ids"] = args.source_ids
+        if getattr(args, "persist", False):
+            input_options["persist"] = True
     else:
-        input_options.update(
-            {
-                "topic": args.topic,
-                "company": args.company,
-                "track": args.track,
-                "summary": args.summary,
-                "keywords": args.keywords,
-            }
-        )
+        input_options.update({
+            "topic": args.topic,
+            "company": args.company,
+            "track": args.track,
+            "summary": args.summary,
+            "keywords": args.keywords,
+        })
 
-    entry_options = {
+    entry_options: dict = {
         "input": input_options,
-        "write": {
-            "executor": "external_writer",
-        },
+        "write": {"executor": "external_writer"},
         "delivery": {
             "target_mode": delivery_channel,
             "target": delivery_target or ("archive://clawradar" if delivery_channel == "archive_only" else ""),
@@ -86,6 +109,18 @@ def _build_payload(args: argparse.Namespace) -> dict:
             "delivery_unavailable": "fail",
         },
     }
+
+    # Deep crawl config
+    if getattr(args, "deep_crawl", False):
+        entry_options["deep_crawl"] = {
+            "enabled": True,
+            "platforms": getattr(args, "deep_crawl_platforms", ["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu"]),
+            "max_keywords": getattr(args, "deep_crawl_max_keywords", 50),
+            "max_notes": getattr(args, "deep_crawl_max_notes", 50),
+            "test_mode": getattr(args, "deep_crawl_test_mode", False),
+            "server_mode": getattr(args, "server_mode", False),
+        }
+
     if notification_channel or notification_target or notify_on or notification_options:
         entry_options["notification"] = {
             "channel": notification_channel,
@@ -93,6 +128,17 @@ def _build_payload(args: argparse.Namespace) -> dict:
             "notify_on": notify_on,
             **notification_options,
         }
+
+    # JSON override (applied last so it can override anything above)
+    entry_options_json = str(getattr(args, "entry_options", "") or "").strip()
+    if entry_options_json:
+        try:
+            override = json.loads(entry_options_json)
+            if isinstance(override, dict):
+                for key, value in override.items():
+                    entry_options[key] = value
+        except json.JSONDecodeError as exc:
+            print(f"[WARN] --entry-options JSON parse failed: {exc}", file=sys.stderr)
 
     payload = {
         "request_id": args.request_id,
@@ -110,9 +156,10 @@ def _build_payload(args: argparse.Namespace) -> dict:
     return payload
 
 
-
 def main() -> None:
     args = _parse_args()
+    if getattr(args, "server_mode", False):
+        os.environ["CLAWRADAR_SERVER_MODE"] = "1"
     runs_root = Path(args.runs_root) if args.runs_root else None
     notification_options = _build_notification_options(args)
     if args.publish_only:

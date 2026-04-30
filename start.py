@@ -2,6 +2,7 @@ import argparse
 import io
 import json
 import logging
+import os
 import re
 import sys
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
@@ -11,7 +12,6 @@ from typing import Any, Callable, Iterator
 from clawradar.orchestrator import topic_radar_orchestrate
 from clawradar.publish_only import publish_existing_output
 from clawradar.real_source import DEFAULT_REAL_SOURCE_IDS
-from run_clawradar_deliverable import _build_payload
 
 
 RUN_MODE_OPTIONS = [
@@ -36,6 +36,16 @@ SOURCE_ID_OPTIONS = [
     ("36kr", "36Kr", "适合看公司、投融资和科技行业新闻。"),
 ]
 
+DEEP_CRAWL_PLATFORM_OPTIONS = [
+    ("xhs", "小红书", "生活/美妆/时尚/旅游"),
+    ("dy", "抖音", "娱乐/音乐/美食/科技"),
+    ("ks", "快手", "生活/搞笑/农村/手工"),
+    ("bili", "B站", "科技/游戏/动漫/学习"),
+    ("wb", "微博", "热点/新闻/娱乐/明星"),
+    ("tieba", "贴吧", "游戏/动漫/兴趣/讨论"),
+    ("zhihu", "知乎", "知识/学习/科技/职场"),
+]
+
 LOG_MODE_OPTIONS = [
     ("concise", "简洁", "默认收起底层详细日志，但保留写作引擎关键日志。"),
     ("verbose", "详细", "显示下游详细日志，适合排查问题。"),
@@ -46,8 +56,10 @@ STAGE_LABELS = {
     "ingest": "规整",
     "topics": "主题整理",
     "score": "评分",
+    "deep_crawl": "深爬",
     "write": "撰写",
     "deliver": "发布",
+    "notify": "通知",
 }
 
 CONCISE_WRITING_LOG_KEYWORDS = (
@@ -119,6 +131,10 @@ def _should_show_concise_log_line(line: str) -> bool:
     if not stripped:
         return False
     return any(keyword in stripped for keyword in CONCISE_WRITING_LOG_KEYWORDS)
+
+
+# ─────────────── prompt helpers ───────────────
+
 def _print_section(title: str) -> None:
     print(f"\n=== {title} ===")
 
@@ -216,9 +232,11 @@ def _default_delivery_target(delivery_channel: str) -> str:
 
 def _validate_delivery_target(delivery_channel: str, delivery_target: str) -> str:
     if delivery_channel != "archive_only" and not delivery_target.strip():
-        raise ValueError("当交付渠道不是“仅归档”时，delivery_target 为必填项。")
+        raise ValueError('当交付渠道不是"仅归档"时，delivery_target 为必填项。')
     return delivery_target
 
+
+# ─────────────── output helpers ───────────────
 
 def _print_key_value(label: str, value: Any) -> None:
     resolved = value if value not in (None, "", [], {}) else "-"
@@ -275,6 +293,12 @@ def _print_event_overview(result: dict[str, Any]) -> None:
     for index, event in enumerate(event_statuses, start=1):
         print(f"{index}. {event.get('event_title') or event.get('event_id') or '-'}")
         print(f"   评分结论：{event.get('decision_status') or '-'}")
+        evidence = event.get("evidence") if isinstance(event.get("evidence"), dict) else {}
+        deep_crawl = evidence.get("deep_crawl") if isinstance(evidence, dict) else None
+        if deep_crawl:
+            platforms = deep_crawl.get("platforms", [])
+            summary = deep_crawl.get("summary", {})
+            print(f"   深爬增强：{len(platforms)} 个平台 → {summary.get('total_notes', '-')} 条笔记")
         print(f"   撰写状态：{event.get('write_status') or '-'}")
         print(f"   发布状态：{event.get('deliver_status') or '-'}")
         stage_reasons = event.get("stage_reasons") if isinstance(event.get("stage_reasons"), dict) else {}
@@ -291,6 +315,7 @@ def _print_pipeline_result(result: dict[str, Any]) -> None:
     _print_key_value("整体结论", result.get("decision_status"))
     _print_key_value("输出目录", result.get("output_root"))
 
+    stage_statuses = result.get("stage_statuses") if isinstance(result.get("stage_statuses"), dict) else {}
     run_summary = result.get("run_summary") if isinstance(result.get("run_summary"), dict) else {}
     if run_summary:
         print("\n[运行摘要]")
@@ -300,11 +325,30 @@ def _print_pipeline_result(result: dict[str, Any]) -> None:
         _print_key_value("可发布数", run_summary.get("publish_ready_count"))
         _print_key_value("撰写成功数", run_summary.get("write_success_count"))
         _print_key_value("发布成功数", run_summary.get("deliver_success_count"))
+        dc_applied = run_summary.get("deep_crawl_applied")
+        dc_platforms = run_summary.get("deep_crawl_platform_count", 0)
+        dc_notes = run_summary.get("deep_crawl_notes_count", 0)
+        if dc_applied:
+            _print_key_value("深爬增强", f"已启用 → {dc_platforms} 平台, {dc_notes} 条笔记")
+        else:
+            dc_stage = stage_statuses.get("deep_crawl") if isinstance(stage_statuses, dict) else None
+            dc_status = (dc_stage or {}).get("status", "") if isinstance(dc_stage, dict) else ""
+            if dc_status == "failed":
+                dc_errors = (dc_stage or {}).get("errors") if isinstance(dc_stage, dict) else []
+                dc_error_msg = ""
+                if isinstance(dc_errors, list) and dc_errors:
+                    first_err = dc_errors[0] if isinstance(dc_errors[0], dict) else {}
+                    dc_error_msg = first_err.get("message", "") or ""
+                _print_key_value("深爬增强", f"已开启但失败" + (f"（{dc_error_msg}）" if dc_error_msg else ""))
+            elif dc_status == "skipped":
+                dc_skip = (dc_stage or {}).get("skipped_reason", "") if isinstance(dc_stage, dict) else ""
+                _print_key_value("深爬增强", f"已开启但跳过（{dc_skip}）" if dc_skip else "已开启但跳过")
+            else:
+                _print_key_value("深爬增强", "未启用")
 
-    stage_statuses = result.get("stage_statuses") if isinstance(result.get("stage_statuses"), dict) else {}
     if stage_statuses:
         print("\n[阶段状态]")
-        for stage_name in ("crawl", "ingest", "topics", "score", "write", "deliver"):
+        for stage_name in ("crawl", "ingest", "topics", "score", "deep_crawl", "write", "deliver", "notify"):
             stage_info = stage_statuses.get(stage_name)
             if not isinstance(stage_info, dict):
                 continue
@@ -359,6 +403,9 @@ def _print_publish_only_result(result: dict[str, Any]) -> None:
     if errors:
         _print_json_block("错误详情", errors)
 
+
+# ─────────────── notification ───────────────
+
 NOTIFY_ON_OPTIONS = [
     ("run_completed", "任务完成", "编排完成且无发布失败时通知。"),
     ("run_failed", "任务失败", "编排执行失败时通知。"),
@@ -406,6 +453,71 @@ def _collect_notification_args() -> argparse.Namespace:
     )
 
 
+# ─────────────── deep crawl config ───────────────
+
+def _collect_deep_crawl_args() -> dict | None:
+    enabled = _prompt_menu(
+        "deep_crawl_enabled",
+        "是否启用社媒深爬（DeepSentimentCrawling）？首次使用会自动建表，需已配置 .env 数据库和 Playwright。",
+        [
+            (False, "否", "跳过深爬阶段，仅使用基础热点搜索。"),
+            (True, "是", "启用深爬阶段，从数据库取关键词在指定平台深度搜索。"),
+        ],
+        default_index=1,
+    )
+    if not enabled:
+        return None
+
+    platforms = _prompt_multi_menu(
+        "deep_crawl_platforms",
+        "选择要深爬的社媒平台。",
+        DEEP_CRAWL_PLATFORM_OPTIONS,
+        default_values=["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu"],
+        required=True,
+    )
+    max_keywords = _prompt_int("deep_crawl_max_keywords", "每平台最大关键词数", default=50, minimum=5)
+    max_notes = _prompt_int("deep_crawl_max_notes", "每平台最大采集笔记数", default=50, minimum=5)
+    server_mode = _prompt_menu(
+        "deep_crawl_server_mode",
+        "是否运行在无头 Linux 云服务器？启用后：CDP 模式（系统 Chrome）+ headless + --no-sandbox。",
+        [
+            (False, "否", "本地 GUI 环境，可用 Playwright 内置 Chromium。"),
+            (True, "是", "无头服务器，启用 CDP 模式连接系统 Chrome，反爬效果更好。"),
+        ],
+        default_index=1,
+    )
+    login_type = _prompt_menu(
+        "deep_crawl_login_type",
+        "选择社媒平台登录方式。（服务器模式下 QR 码通过终端字符渲染，手机可直接扫码。）",
+        [
+            ("qrcode", "扫码登录", "二维码扫码登录。无 GUI 时终端显示 Unicode QR 码。"),
+            ("phone", "手机号登录", "通过手机验证码登录（需外部 SMS Redis）。"),
+            ("cookie", "Cookie 登录", "通过浏览器 Cookie 登录（需提前从桌面浏览器导出）。"),
+        ],
+        default_index=0,
+    )
+    test_mode = _prompt_menu(
+        "deep_crawl_test_mode",
+        "是否使用测试模式（少爬一些，适合验证配置）？",
+        [
+            (False, "否", "正常爬取。"),
+            (True, "是", "测试模式，减少爬取量以快速验证。"),
+        ],
+        default_index=1,
+    )
+    return {
+        "enabled": True,
+        "platforms": platforms,
+        "max_keywords": max_keywords,
+        "max_notes": max_notes,
+        "login_type": login_type,
+        "test_mode": test_mode,
+        "server_mode": server_mode,
+    }
+
+
+# ─────────────── publish only ───────────────
+
 def _collect_publish_only_args() -> argparse.Namespace:
     _print_section("仅重发已有内容")
     runs_root = _prompt_text("runs_root", "输出根目录；留空时使用项目默认 outputs 目录。")
@@ -445,6 +557,8 @@ def _collect_publish_only_args() -> argparse.Namespace:
     )
 
 
+# ─────────────── full pipeline ───────────────
+
 def _collect_run_args() -> argparse.Namespace:
     _print_section("运行完整流程")
     input_mode = _prompt_menu("input_mode", "选择本次内容生成方式。", INPUT_MODE_OPTIONS, default_index=1)
@@ -454,6 +568,7 @@ def _collect_run_args() -> argparse.Namespace:
     summary = ""
     keywords: list[str] = []
     source_ids = list(DEFAULT_REAL_SOURCE_IDS)
+    persist = False
 
     if input_mode == "real_source":
         source_ids = _prompt_multi_menu(
@@ -462,6 +577,15 @@ def _collect_run_args() -> argparse.Namespace:
             SOURCE_ID_OPTIONS,
             default_values=list(DEFAULT_REAL_SOURCE_IDS),
             required=True,
+        )
+        persist = _prompt_menu(
+            "persist",
+            "是否持久化热点数据到数据库（用于后续深爬关键词提取）？首次自动建表。",
+            [
+                (False, "否", "不持久化，仅用本次采集结果。"),
+                (True, "是", "持久化到数据库，首次自动建表，供后续深爬使用。"),
+            ],
+            default_index=1,
         )
     else:
         topic = _prompt_text("topic", "主题名称，用于驱动检索与写作。", required=True)
@@ -501,6 +625,14 @@ def _collect_run_args() -> argparse.Namespace:
         default=_default_delivery_target(delivery_channel),
         required=delivery_channel != "archive_only",
     )
+
+    _print_section("高级选项")
+    deep_crawl_config = _collect_deep_crawl_args()
+    entry_options_json = _prompt_text(
+        "entry_options_json",
+        "entry_options JSON 覆盖（高级）；直接回车跳过。",
+        default="",
+    )
     notification_args = _collect_notification_args()
 
     return argparse.Namespace(
@@ -511,6 +643,7 @@ def _collect_run_args() -> argparse.Namespace:
         summary=summary,
         keywords=keywords,
         source_ids=source_ids,
+        persist=persist,
         limit=limit,
         request_id=request_id,
         trigger_source=trigger_source,
@@ -518,6 +651,8 @@ def _collect_run_args() -> argparse.Namespace:
         runs_root=runs_root,
         delivery_channel=delivery_channel,
         delivery_target=_validate_delivery_target(delivery_channel, delivery_target),
+        deep_crawl_config=deep_crawl_config,
+        entry_options_json=entry_options_json,
         notification_channel=notification_args.notification_channel,
         notification_target=notification_args.notification_target,
         notify_on=notification_args.notify_on,
@@ -525,9 +660,96 @@ def _collect_run_args() -> argparse.Namespace:
     )
 
 
+# ─────────────── payload builder ───────────────
+
+def _build_payload(args: argparse.Namespace) -> dict:
+    """Build orchestrator payload from collected args. Mirrors run_clawradar_deliverable._build_payload."""
+    delivery_channel = getattr(args, "delivery_channel", "archive_only")
+    delivery_target = getattr(args, "delivery_target", "")
+    notification_channel = str(getattr(args, "notification_channel", "") or "").strip()
+    notification_target = str(getattr(args, "notification_target", "") or "").strip()
+    notify_on = list(getattr(args, "notify_on", []) or [])
+    pushplus_token = str(getattr(args, "pushplus_token", "") or "").strip()
+    version = getattr(args, "__version", None)
+    version_meta = {} if not version else {"__version": version}
+
+    notification_options: dict = {}
+    if pushplus_token:
+        notification_options["pushplus"] = {"token": pushplus_token}
+
+    input_options: dict = {"mode": args.input_mode, "limit": args.limit}
+    if args.input_mode == "real_source":
+        input_options["source_ids"] = args.source_ids
+        if getattr(args, "persist", False):
+            input_options["persist"] = True
+    else:
+        input_options.update({
+            "topic": args.topic,
+            "company": args.company,
+            "track": args.track,
+            "summary": args.summary,
+            "keywords": args.keywords,
+        })
+
+    entry_options: dict = {
+        "input": input_options,
+        "write": {"executor": "external_writer"},
+        "delivery": {
+            "target_mode": delivery_channel,
+            "target": delivery_target or ("archive://clawradar" if delivery_channel == "archive_only" else ""),
+        },
+        "degrade": {
+            "input_unavailable": "fail",
+            "write_unavailable": "fail",
+            "delivery_unavailable": "fail",
+        },
+    }
+
+    deep_crawl_config = getattr(args, "deep_crawl_config", None)
+    if isinstance(deep_crawl_config, dict) and deep_crawl_config.get("enabled"):
+        entry_options["deep_crawl"] = deep_crawl_config
+
+    if notification_channel or notification_target or notify_on or notification_options:
+        entry_options["notification"] = {
+            "channel": notification_channel,
+            "target": notification_target,
+            "notify_on": notify_on,
+            **notification_options,
+        }
+
+    # Allow JSON override of entry_options (advanced users)
+    entry_options_json = str(getattr(args, "entry_options_json", "") or "").strip()
+    if entry_options_json:
+        try:
+            override = json.loads(entry_options_json)
+            if isinstance(override, dict):
+                for key, value in override.items():
+                    entry_options[key] = value
+        except json.JSONDecodeError as exc:
+            print(f"[WARN] entry_options_json parse failed: {exc}")
+
+    payload: dict = {
+        "request_id": args.request_id,
+        "trigger_source": args.trigger_source,
+        "entry_options": entry_options,
+        **version_meta,
+    }
+    if args.input_mode == "user_topic":
+        payload["user_topic"] = {
+            "topic": args.topic,
+            "company": args.company,
+            "track": args.track,
+            "summary": args.summary,
+            "keywords": args.keywords,
+        }
+    return payload
+
+
+# ─────────────── main ───────────────
+
 def main() -> None:
     print("ClawRadar 交互式启动")
-    print("说明：按提示输入序号即可；带“默认”的项目可直接回车。")
+    print('说明：按提示输入序号即可；带"默认"的项目可直接回车。')
     publish_only = _prompt_menu("运行模式", "选择要执行的操作。", RUN_MODE_OPTIONS, default_index=1)
     log_mode = _prompt_menu("日志模式", "选择运行时日志展示方式。", LOG_MODE_OPTIONS, default_index=1)
 
@@ -557,6 +779,9 @@ def main() -> None:
         return
 
     args = _collect_run_args()
+    dc_config = getattr(args, "deep_crawl_config", None) or {}
+    if dc_config.get("server_mode"):
+        os.environ["CLAWRADAR_SERVER_MODE"] = "1"
     payload = _build_payload(args)
     result, captured_output = _execute_with_log_mode(
         log_mode,

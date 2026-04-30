@@ -255,6 +255,7 @@ def _build_entry_resolution(
     input_options = entry_options.get("input") if isinstance(entry_options.get("input"), dict) else {}
     write_options = entry_options.get("write") if isinstance(entry_options.get("write"), dict) else {}
     delivery_options = entry_options.get("delivery") if isinstance(entry_options.get("delivery"), dict) else {}
+    deep_crawl_options = entry_options.get("deep_crawl") if isinstance(entry_options.get("deep_crawl"), dict) else {}
     degrade_options = entry_options.get("degrade") if isinstance(entry_options.get("degrade"), dict) else {}
 
     input_mode, input_mode_source = _normalize_entry_choice(
@@ -331,6 +332,14 @@ def _build_entry_resolution(
     else:
         delivery_enabled = True
         delivery_enabled_source = "default"
+
+    deep_crawl_enabled = _coerce_bool(deep_crawl_options.get("enabled"), default=False)
+    deep_crawl_platforms = list(deep_crawl_options.get("platforms") or ["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu"])
+    deep_crawl_max_keywords = int(deep_crawl_options.get("max_keywords") or 50)
+    deep_crawl_max_notes = int(deep_crawl_options.get("max_notes") or 50)
+    deep_crawl_test_mode = bool(deep_crawl_options.get("test_mode") or False)
+    deep_crawl_login_type = str(deep_crawl_options.get("login_type") or "qrcode")
+    deep_crawl_server_mode = bool(deep_crawl_options.get("server_mode") or False)
 
     if delivery_target_mode == "archive_only":
         if delivery_channel is not None:
@@ -434,6 +443,15 @@ def _build_entry_resolution(
             "target_source": delivery_target_source,
             "delivery_time": resolved_delivery_time,
             "delivery_time_source": delivery_time_source,
+        },
+        "deep_crawl": {
+            "enabled": deep_crawl_enabled,
+            "platforms": deep_crawl_platforms,
+            "max_keywords": deep_crawl_max_keywords,
+            "max_notes": deep_crawl_max_notes,
+            "test_mode": deep_crawl_test_mode,
+            "login_type": deep_crawl_login_type,
+            "server_mode": deep_crawl_server_mode,
         },
         "degrade": {
             "strategies": {
@@ -782,6 +800,7 @@ def _build_stage_statuses(
     score_result: Optional[Dict[str, Any]],
     write_result: Optional[Dict[str, Any]],
     deliver_result: Optional[Dict[str, Any]],
+    deep_crawl_result: Optional[Dict[str, Any]] = None,
     skipped_reasons: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     skipped_reasons = skipped_reasons or {}
@@ -875,6 +894,27 @@ def _build_stage_statuses(
             "errors": _stage_errors("score", score_result),
             "skipped_reason": skipped_reasons.get("score"),
         },
+        "deep_crawl": {
+            "status": (
+                OrchestratorStageStatus.SUCCEEDED.value
+                if isinstance(deep_crawl_result, dict) and deep_crawl_result.get("success")
+                else OrchestratorStageStatus.FAILED.value
+                if isinstance(deep_crawl_result, dict) and not deep_crawl_result.get("success")
+                else OrchestratorStageStatus.SKIPPED.value
+            ),
+            "summary": {
+                "platforms_attempted": (
+                    deep_crawl_result.get("platforms_attempted", [])
+                    if isinstance(deep_crawl_result, dict) else []
+                ),
+                "total_notes": (
+                    (deep_crawl_result.get("summary") or {}).get("total_notes", 0)
+                    if isinstance(deep_crawl_result, dict) else 0
+                ),
+            },
+            "errors": _stage_errors("deep_crawl", deep_crawl_result),
+            "skipped_reason": skipped_reasons.get("deep_crawl"),
+        },
         "write": {
             "status": write_status,
             "summary": {
@@ -951,6 +991,7 @@ def _build_event_statuses(
     delivery_receipt: Optional[Dict[str, Any]],
     score_result: Optional[Dict[str, Any]] = None,
     write_result: Optional[Dict[str, Any]] = None,
+    deep_crawl_result: Optional[Dict[str, Any]] = None,
     skipped_reasons: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     event_index: Dict[str, Dict[str, Any]] = {}
@@ -967,6 +1008,7 @@ def _build_event_statuses(
                 "write_status": None,
                 "deliver_status": None,
                 "decision_status": None,
+                "deep_crawl_status": None,
                 "stage_reasons": {},
                 "artifact_summary": {
                     "timeline_points": 0,
@@ -1117,6 +1159,20 @@ def _build_event_statuses(
                 entry["score_status"] = OrchestratorStageStatus.SKIPPED.value
                 note(entry, "score", skipped_reasons.get("score"))
 
+    # Deep crawl status: apply to all events based on overall result
+    if isinstance(deep_crawl_result, dict):
+        dc_success = deep_crawl_result.get("success") is True
+        dc_error = str(deep_crawl_result.get("error") or "").strip()
+        dc_status = OrchestratorStageStatus.SUCCEEDED.value if dc_success else OrchestratorStageStatus.FAILED.value
+        dc_reason = None if dc_success else (dc_error or "deep_crawl failed")
+        for entry in event_index.values():
+            entry["deep_crawl_status"] = dc_status
+            note(entry, "deep_crawl", dc_reason)
+    elif skipped_reasons.get("deep_crawl"):
+        for entry in event_index.values():
+            entry["deep_crawl_status"] = OrchestratorStageStatus.SKIPPED.value
+            note(entry, "deep_crawl", skipped_reasons.get("deep_crawl"))
+
     for entry in event_index.values():
         if entry["decision_status"] and entry["decision_status"] != ScoreDecisionStatus.PUBLISH_READY.value:
             if entry["write_status"] is None:
@@ -1182,9 +1238,10 @@ def _persist_run_outputs(
     content_bundles: Sequence[Dict[str, Any]],
     delivery_receipt: Optional[Dict[str, Any]],
     score_results: Optional[Dict[str, Any]],
-    delivery_result: Optional[Dict[str, Any]],
-    notification_result: Optional[Dict[str, Any]],
-    stage_results: Dict[str, Any],
+    deep_crawl_result: Optional[Dict[str, Any]] = None,
+    delivery_result: Optional[Dict[str, Any]] = None,
+    notification_result: Optional[Dict[str, Any]] = None,
+    stage_results: Dict[str, Any] = {},
 ) -> Dict[str, str]:
     output_context = payload.get("output_context") if isinstance(payload.get("output_context"), dict) else {}
     output_root = output_context.get("output_root")
@@ -1269,6 +1326,15 @@ def _persist_run_outputs(
         persist(reports_root / "scored_events.json", deepcopy(list(scored_events)))
     if isinstance(score_results, dict):
         persist(reports_root / "score_results.json", deepcopy(score_results))
+    if isinstance(deep_crawl_result, dict):
+        persist(debug_root / "deep_crawl.json", deepcopy(deep_crawl_result))
+    # Persist search enrichment stats if available in payload context
+    search_enrichment = (
+        (payload.get("real_source_context") or {}).get("search_enrichment")
+        or (payload.get("user_topic_context") or {}).get("search_enrichment")
+    )
+    if isinstance(search_enrichment, dict):
+        persist(debug_root / "search_enrichment.json", deepcopy(search_enrichment))
     if content_bundles:
         persist(debug_root / "content_bundles.json", deepcopy(list(content_bundles)))
     write_stage = stage_results.get("write") if isinstance(stage_results.get("write"), dict) else None
@@ -1313,6 +1379,7 @@ def _finalize_orchestration(
     ingest_result: Optional[Dict[str, Any]] = None,
     topic_result: Optional[Dict[str, Any]] = None,
     score_result: Optional[Dict[str, Any]] = None,
+    deep_crawl_result: Optional[Dict[str, Any]] = None,
     write_result: Optional[Dict[str, Any]] = None,
     deliver_result: Optional[Dict[str, Any]] = None,
     skipped_reasons: Optional[Dict[str, str]] = None,
@@ -1343,6 +1410,7 @@ def _finalize_orchestration(
     trigger_source = _normalize_trigger_source({"trigger_source": raw_trigger_source, "target_event_ids": requested_event_ids or []})
 
     crawl_results = deepcopy(crawl_result) if isinstance(crawl_result, dict) else None
+    resolved_deep_crawl = deepcopy(deep_crawl_result) if isinstance(deep_crawl_result, dict) else deepcopy(payload.get("_deep_crawl_result")) if isinstance(payload.get("_deep_crawl_result"), dict) else None
     topic_candidates = _extract_topic_candidates(crawl_results, payload)
     normalized_events = _extract_normalized_events(ingest_result, payload)
     topic_cards = _extract_topic_cards(topic_result, payload)
@@ -1355,6 +1423,7 @@ def _finalize_orchestration(
         ("ingest", ingest_result) if isinstance(ingest_result, dict) else None,
         ("topics", topic_result) if isinstance(topic_result, dict) else None,
         ("score", score_result) if isinstance(score_result, dict) else None,
+        ("deep_crawl", resolved_deep_crawl) if isinstance(resolved_deep_crawl, dict) else None,
         ("write", write_result) if isinstance(write_result, dict) else None,
         ("deliver", deliver_result) if isinstance(deliver_result, dict) else None,
     )
@@ -1376,6 +1445,7 @@ def _finalize_orchestration(
         score_result=score_result,
         write_result=write_result,
         deliver_result=deliver_result,
+        deep_crawl_result=resolved_deep_crawl,
         skipped_reasons=skipped_reasons,
     )
     artifact_summary = _build_artifact_summary(
@@ -1404,6 +1474,7 @@ def _finalize_orchestration(
         delivery_receipt=delivery_receipt,
         score_result=score_result,
         write_result=write_result,
+        deep_crawl_result=resolved_deep_crawl,
         skipped_reasons=skipped_reasons,
     )
 
@@ -1427,6 +1498,18 @@ def _finalize_orchestration(
             or (score_result or {}).get("recovery_used")
             or payload.get("recovery_used")
         ),
+        "deep_crawl_applied": bool(
+            resolved_deep_crawl
+            and isinstance(resolved_deep_crawl, dict)
+            and resolved_deep_crawl.get("success")
+        ),
+        "deep_crawl_platform_count": len(
+            resolved_deep_crawl.get("platforms_attempted", [])
+        ) if isinstance(resolved_deep_crawl, dict) else 0,
+        "deep_crawl_notes_count": (
+            (resolved_deep_crawl.get("summary") or {}).get("total_notes", 0)
+            if isinstance(resolved_deep_crawl, dict) else 0
+        ),
         "main_reports_path": "reports/",
         "debug_path": "debug/",
     }
@@ -1435,6 +1518,7 @@ def _finalize_orchestration(
         "ingest": deepcopy(ingest_result) if isinstance(ingest_result, dict) else None,
         "topics": deepcopy(topic_result) if isinstance(topic_result, dict) else None,
         "score": deepcopy(score_result) if isinstance(score_result, dict) else None,
+        "deep_crawl": deepcopy(resolved_deep_crawl) if isinstance(resolved_deep_crawl, dict) else None,
         "write": deepcopy(write_result) if isinstance(write_result, dict) else None,
         "deliver": deepcopy(deliver_result) if isinstance(deliver_result, dict) else None,
     }
@@ -1491,6 +1575,7 @@ def _finalize_orchestration(
         content_bundles=content_bundles,
         delivery_receipt=delivery_receipt,
         score_results=deepcopy(score_result) if isinstance(score_result, dict) else None,
+        deep_crawl_result=deepcopy(resolved_deep_crawl) if isinstance(resolved_deep_crawl, dict) else None,
         delivery_result=deepcopy(deliver_result) if isinstance(deliver_result, dict) else None,
         notification_result=deepcopy(notification_result),
         stage_results=stage_results,
@@ -2224,6 +2309,53 @@ def topic_radar_orchestrate(
             for item in score_result.get("scored_events") or []
             if isinstance(item, dict) and item.get("status") == ScoreDecisionStatus.PUBLISH_READY.value
         ]
+
+        # Events eligible for deep crawl: publish_ready or watchlist (may benefit from evidence enrichment)
+        deep_crawl_eligible_events = [
+            deepcopy(item)
+            for item in score_result.get("scored_events") or []
+            if isinstance(item, dict)
+            and item.get("status") in (ScoreDecisionStatus.PUBLISH_READY.value, ScoreDecisionStatus.WATCHLIST.value)
+        ]
+
+        # DEEP_CRAWL stage: runs before publish_ready gate — enriches watchlist events too
+        deep_crawl_result: Optional[Dict[str, Any]] = None
+        if entry_resolution["deep_crawl"]["enabled"] and deep_crawl_eligible_events:
+            try:
+                from clawradar.real_source import _run_deep_sentiment_crawling
+
+                deep_crawl_result = _run_deep_sentiment_crawling(
+                    platforms=entry_resolution["deep_crawl"]["platforms"],
+                    max_keywords=entry_resolution["deep_crawl"]["max_keywords"],
+                    max_notes=entry_resolution["deep_crawl"]["max_notes"],
+                    test_mode=entry_resolution["deep_crawl"]["test_mode"],
+                    login_type=entry_resolution["deep_crawl"]["login_type"],
+                    server_mode=entry_resolution["deep_crawl"]["server_mode"],
+                )
+                # Inject deep crawl evidence into eligible scored events
+                if deep_crawl_result.get("success"):
+                    for event in deep_crawl_eligible_events:
+                        evidence = event.get("evidence_overview") or {}
+                        evidence["deep_crawl"] = {
+                            "source": "mindspider_deep_sentiment",
+                            "platforms": deep_crawl_result.get("platforms_attempted", []),
+                            "summary": deep_crawl_result.get("summary", {}),
+                        }
+                        event["evidence_overview"] = evidence
+            except Exception as exc:
+                deep_crawl_result = {
+                    "success": False,
+                    "error": str(exc).strip() or type(exc).__name__,
+                    "platforms_attempted": [],
+                }
+            stage_skipped_reasons.pop("deep_crawl", None)
+        elif not entry_resolution["deep_crawl"]["enabled"]:
+            stage_skipped_reasons["deep_crawl"] = "deep_crawl disabled in entry_options"
+        elif not deep_crawl_eligible_events:
+            stage_skipped_reasons["deep_crawl"] = "no eligible events (publish_ready or watchlist); deep_crawl skipped"
+        # Store in payload so _finalize_orchestration can pick it up
+        working_payload["_deep_crawl_result"] = deep_crawl_result
+
     if not publish_ready_events and resume_target != "deliver":
         return _finalize_orchestration(
             payload=working_payload,
@@ -2239,6 +2371,7 @@ def topic_radar_orchestrate(
             ingest_result=ingest_result,
             topic_result=topic_result,
             score_result=score_result,
+            deep_crawl_result=deep_crawl_result if deep_crawl_result is not None else working_payload.get("_deep_crawl_result"),
             skipped_reasons={
                 **stage_skipped_reasons,
                 "write": "decision_status is not publish_ready; write skipped",

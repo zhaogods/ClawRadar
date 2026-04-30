@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import re
+import sys as _sys
 from copy import deepcopy
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -128,11 +130,101 @@ def _load_media_engine_search_module():
     )
 
 
+def _load_deep_sentiment_module():
+    return _load_first_available_module(
+        (
+            "radar_engines.MindSpider.DeepSentimentCrawling.main",
+        ),
+        capability_label="MindSpider DeepSentimentCrawling",
+    )
+
+
+def _run_deep_sentiment_crawling(
+    platforms: List[str] | None = None,
+    max_keywords: int = 50,
+    max_notes: int = 50,
+    test_mode: bool = False,
+    login_type: str = "qrcode",
+    server_mode: bool = False,
+) -> Dict[str, Any]:
+    """Run MindSpider DeepSentimentCrawling on selected social media platforms.
+
+    Returns a dict with crawl statistics and content summaries per platform.
+    """
+    if platforms is None:
+        platforms = ["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu"]
+
+    module = _load_deep_sentiment_module()
+    crawler_class = getattr(module, "DeepSentimentCrawling", None)
+    if crawler_class is None:
+        raise RealSourceUnavailableError("MindSpider DeepSentimentCrawling class not found")
+
+    crawler = crawler_class(server_mode=server_mode)
+
+    # Wrap stdout/stderr with UTF-8 to survive emoji print() on GBK Windows consoles
+    _old_stdout = _sys.stdout
+    _old_stderr = _sys.stderr
+    try:
+        if hasattr(_old_stdout, "buffer") and _old_stdout.buffer is not None:
+            _sys.stdout = io.TextIOWrapper(
+                _old_stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True
+            )
+        if hasattr(_old_stderr, "buffer") and _old_stderr.buffer is not None:
+            _sys.stderr = io.TextIOWrapper(
+                _old_stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True
+            )
+        crawl_return = crawler.run_daily_crawling(
+            target_date=None,  # Use today
+            platforms=list(platforms),
+            max_keywords_per_platform=int(max_keywords),
+            max_notes_per_platform=int(max_notes),
+            login_type=login_type,
+        )
+    except Exception as exc:
+        raise RealSourceUnavailableError(f"DeepSentimentCrawling failed: {exc}") from exc
+    finally:
+        # Detach wrappers from underlying buffers so GC won't close them
+        _new_stdout = _sys.stdout
+        _new_stderr = _sys.stderr
+        _sys.stdout = _old_stdout
+        _sys.stderr = _old_stderr
+        for _w in (_new_stdout, _new_stderr):
+            try:
+                _w.detach()
+            except Exception:
+                pass
+
+    # run_daily_crawling may return bool or {"success": bool, "error": str}
+    if isinstance(crawl_return, dict):
+        is_success = bool(crawl_return.get("success"))
+        error_msg = str(crawl_return.get("error") or "").strip()
+    else:
+        is_success = bool(crawl_return)
+        error_msg = "" if is_success else "crawling returned False"
+
+    summary = crawler.get_crawl_summary() if hasattr(crawler, "get_crawl_summary") else {}
+    return {
+        "success": is_success,
+        "error": error_msg if not is_success else None,
+        "platforms_attempted": list(platforms),
+        "params": {
+            "max_keywords": max_keywords,
+            "max_notes": max_notes,
+            "test_mode": test_mode,
+        },
+        "summary": summary,
+    }
+
+
 def _settings_value(name: str) -> Any:
     return getattr(_load_settings(), name, None)
 
 
-def _collect_mindspider_news(source_ids: Sequence[str]) -> Tuple[List[Dict[str, Any]], Dict[str, str], str]:
+def _collect_mindspider_news(
+    source_ids: Sequence[str],
+    *,
+    persist: bool = False,
+) -> Tuple[List[Dict[str, Any]], Dict[str, str], str, List[str]]:
     module = _load_mindspider_module()
     collector_class = getattr(module, "NewsCollector", None)
     if collector_class is None:
@@ -142,25 +234,102 @@ def _collect_mindspider_news(source_ids: Sequence[str]) -> Tuple[List[Dict[str, 
     base_url = str(getattr(module, "BASE_URL", "https://newsnow.busiyi.world")).rstrip("/")
 
     collector = collector_class.__new__(collector_class)
-    collector.db_manager = None
     collector.supported_sources = list(source_names.keys())
+
+    # Enable database persistence when configured
+    extracted_keywords: List[str] = []
+    if persist:
+        try:
+            settings = _load_settings()
+            db_config = {
+                "db_dialect": getattr(settings, "DB_DIALECT", "mysql"),
+                "db_host": getattr(settings, "DB_HOST", "127.0.0.1"),
+                "db_port": int(getattr(settings, "DB_PORT", 3306)),
+                "db_user": getattr(settings, "DB_USER", "root"),
+                "db_password": getattr(settings, "DB_PASSWORD", ""),
+                "db_name": getattr(settings, "DB_NAME", "mindspider"),
+                "db_charset": getattr(settings, "DB_CHARSET", "utf8mb4"),
+            }
+            DatabaseManager = getattr(module, "DatabaseManager", None)
+            if DatabaseManager is not None:
+                db = DatabaseManager()
+                collector.db_manager = db
+        except Exception:
+            collector.db_manager = None
+    else:
+        collector.db_manager = None
 
     try:
         results = asyncio.run(collector.get_popular_news(list(source_ids)))
     except Exception as exc:
         raise RealSourceUnavailableError(f"MindSpider hot news collection failed: {exc}") from exc
-    finally:
-        close_method = getattr(collector, "close", None)
-        if callable(close_method):
-            try:
-                close_method()
-            except Exception:
-                pass
 
     if not isinstance(results, list):
         raise RealSourceUnavailableError("MindSpider hot news collection returned an invalid payload")
 
-    return results, source_names, base_url
+    # Persist collected news to database and extract keywords if DB was enabled
+    if persist and collector.db_manager is not None:
+        try:
+            asyncio.run(collector.collect_and_save_news(list(source_ids)))
+        except Exception:
+            pass
+
+    # Extract keywords & save to daily_topics so DeepSentimentCrawling can read them
+    if persist:
+        try:
+            topic_module = _load_first_available_module(
+                (
+                    "MindSpider.BroadTopicExtraction.topic_extractor",
+                    "radar_engines.MindSpider.BroadTopicExtraction.topic_extractor",
+                ),
+                capability_label="MindSpider TopicExtractor",
+            )
+            TopicExtractor = getattr(topic_module, "TopicExtractor", None)
+            if TopicExtractor is not None:
+                extractor = TopicExtractor()
+                news_items = []
+                for result in results:
+                    items = result.get("data", {}).get("items", []) if isinstance(result.get("data"), dict) else []
+                    news_items.extend(items)
+                if news_items:
+                    ai_result = extractor.extract_keywords_and_summary(news_items)
+                    # extract_keywords_and_summary returns Tuple[List[str], str]
+                    if isinstance(ai_result, (tuple, list)) and len(ai_result) >= 2:
+                        extracted_keywords = list(ai_result[0] or [])
+                        ai_summary = str(ai_result[1] or "")
+                    else:
+                        extracted_keywords = []
+                        ai_summary = ""
+                    if extracted_keywords and collector.db_manager is not None:
+                        collector.db_manager.save_daily_topics(extracted_keywords, ai_summary)
+        except Exception:
+            pass
+
+    # Log historical crawl statistics when persistence is active
+    if persist and collector.db_manager is not None:
+        try:
+            stats = collector.db_manager.show_statistics()
+            if stats:
+                logger = getattr(module, "logger", None)
+                if logger:
+                    logger.info(f"📊 历史爬取统计: {stats}")
+            recent = collector.db_manager.show_recent_data(days=3)
+            if recent is not None:
+                logger = getattr(module, "logger", None)
+                if logger:
+                    logger.info(f"📅 最近3天数据量: {recent}")
+        except Exception:
+            pass
+
+    # Close DB connection after all operations complete
+    close_method = getattr(collector, "close", None)
+    if callable(close_method):
+        try:
+            close_method()
+        except Exception:
+            pass
+
+    return results, source_names, base_url, extracted_keywords
 
 
 def _build_fact_candidates(
@@ -314,7 +483,11 @@ def _load_source_driven_payload(payload: Dict[str, Any], input_options: Dict[str
     )
     collected_at = _utc_timestamp()
 
-    results, source_names, base_url = _collect_mindspider_news(requested_source_ids)
+    persist = bool(input_options.get("persist") or payload.get("persist"))
+
+    results, source_names, base_url, extracted_keywords = _collect_mindspider_news(
+        requested_source_ids, persist=persist,
+    )
 
     grouped_candidates: List[List[Dict[str, Any]]] = []
     applied_source_ids: List[str] = []
@@ -390,6 +563,7 @@ def _load_source_driven_payload(payload: Dict[str, Any], input_options: Dict[str
         "failed_sources": failed_sources,
         "candidate_count": len(topic_candidates),
         "collected_at": collected_at,
+        "extracted_keywords": extracted_keywords,
     }
 
     return {
@@ -493,61 +667,173 @@ def _build_topic_search_query(context: Dict[str, Any]) -> str:
     return " ".join([*deduplicated, "latest news"]).strip()
 
 
+def _normalize_search_item(
+    item: Any,
+    *,
+    provider: str,
+    source_type: str,
+    source_name: str,
+    time_window: str = "week",
+    time_weight: float = 1.0,
+) -> Dict[str, Any] | None:
+    """Normalize a search result item to the common dict format."""
+    title = str(getattr(item, "title", "") or getattr(item, "name", "") or "").strip()
+    url = str(getattr(item, "url", "") or "").strip()
+    if not title or not url:
+        return None
+    return {
+        "title": title,
+        "url": url,
+        "content": str(getattr(item, "content", "") or getattr(item, "snippet", "") or "").strip(),
+        "published_at": str(getattr(item, "published_date", "") or getattr(item, "date_last_crawled", "") or "").strip(),
+        "provider": provider,
+        "source_type": source_type,
+        "source_name": source_name,
+        "time_window": time_window,
+        "time_weight": time_weight,
+    }
+
+
+# Time decay weights: 24h = 1.0, week = 0.7, month = 0.4
+_TIME_WINDOW_WEIGHTS = {"24h": 1.0, "week": 0.7, "month": 0.4}
+
+
 def _search_with_tavily(query: str) -> List[Dict[str, Any]]:
     search_module = _load_query_engine_search_module()
-    client = search_module.TavilyNewsAgency(api_key=_settings_value("TAVILY_API_KEY"))
-    response = client.search_news_last_week(query)
-    return [
-        {
-            "title": item.title,
-            "url": item.url,
-            "content": item.content,
-            "published_at": item.published_date,
-            "provider": "tavily_news",
-            "source_type": "tavily:news",
-            "source_name": "Tavily News",
-        }
-        for item in response.results
-        if str(item.title or "").strip() and str(item.url or "").strip()
+    api_key = _settings_value("TAVILY_API_KEY")
+    client = search_module.TavilyNewsAgency(api_key=api_key)
+
+    items: List[Dict[str, Any]] = []
+
+    # Multi-window search: 24h, week
+    windows = [
+        ("24h", lambda: client.search_news_last_24_hours(query)),
+        ("week", lambda: client.search_news_last_week(query)),
     ]
+    for window_name, search_fn in windows:
+        try:
+            response = search_fn()
+            for item in response.results:
+                norm = _normalize_search_item(
+                    item,
+                    provider="tavily_news",
+                    source_type=f"tavily:news:{window_name}",
+                    source_name="Tavily News",
+                    time_window=window_name,
+                    time_weight=_TIME_WINDOW_WEIGHTS.get(window_name, 0.7),
+                )
+                if norm:
+                    items.append(norm)
+        except Exception:
+            pass
+
+    # Image search
+    try:
+        img_response = client.search_images_for_news(query)
+        for item in img_response.results:
+            title = str(getattr(item, "title", "") or "").strip()
+            img_url = str(getattr(item, "url", "") or "").strip()
+            if title and img_url:
+                items.append({
+                    "title": title,
+                    "url": img_url,
+                    "content": str(getattr(item, "description", "") or "").strip(),
+                    "published_at": "",
+                    "provider": "tavily_news",
+                    "source_type": "tavily:image",
+                    "source_name": "Tavily Images",
+                    "time_window": "week",
+                    "time_weight": 0.5,
+                    "is_image": True,
+                })
+    except Exception:
+        pass
+
+    return items
 
 
 def _search_with_bocha(query: str) -> List[Dict[str, Any]]:
     search_module = _load_media_engine_search_module()
-    client = search_module.BochaMultimodalSearch(api_key=_settings_value("BOCHA_WEB_SEARCH_API_KEY"))
-    response = client.search_last_week(query)
-    return [
-        {
-            "title": item.name,
-            "url": item.url,
-            "content": item.snippet,
-            "published_at": item.date_last_crawled,
-            "provider": "bocha_search",
-            "source_type": "bocha:web",
-            "source_name": "Bocha Search",
-        }
-        for item in response.webpages
-        if str(item.name or "").strip() and str(item.url or "").strip()
+    api_key = _settings_value("BOCHA_WEB_SEARCH_API_KEY")
+    client = search_module.BochaMultimodalSearch(api_key=api_key)
+
+    items: List[Dict[str, Any]] = []
+
+    # Multi-window search: 24h, week
+    windows = [
+        ("24h", lambda: client.search_last_24_hours(query)),
+        ("week", lambda: client.search_last_week(query)),
     ]
+    for window_name, search_fn in windows:
+        try:
+            response = search_fn()
+            for item in response.webpages:
+                norm = _normalize_search_item(
+                    item,
+                    provider="bocha_search",
+                    source_type=f"bocha:web:{window_name}",
+                    source_name="Bocha Search",
+                    time_window=window_name,
+                    time_weight=_TIME_WINDOW_WEIGHTS.get(window_name, 0.7),
+                )
+                if norm:
+                    items.append(norm)
+        except Exception:
+            pass
+
+    # Structured data search (stock, weather, encyclopedia)
+    try:
+        struct_response = client.search_for_structured_data(query)
+        for item in struct_response.webpages:
+            norm = _normalize_search_item(
+                item,
+                provider="bocha_search",
+                source_type="bocha:structured",
+                source_name="Bocha Structured",
+                time_window="week",
+                time_weight=0.8,
+            )
+            if norm:
+                norm["is_structured"] = True
+                items.append(norm)
+    except Exception:
+        pass
+
+    return items
 
 
 def _search_with_anspire(query: str, limit: int) -> List[Dict[str, Any]]:
     search_module = _load_media_engine_search_module()
-    client = search_module.AnspireAISearch(api_key=_settings_value("ANSPIRE_API_KEY"))
-    response = client.search_last_week(query, max_results=limit)
-    return [
-        {
-            "title": item.name,
-            "url": item.url,
-            "content": item.snippet,
-            "published_at": item.date_last_crawled,
-            "provider": "anspire_search",
-            "source_type": "anspire:web",
-            "source_name": "Anspire Search",
-        }
-        for item in response.webpages
-        if str(item.name or "").strip() and str(item.url or "").strip()
+    api_key = _settings_value("ANSPIRE_API_KEY")
+    client = search_module.AnspireAISearch(api_key=api_key)
+
+    items: List[Dict[str, Any]] = []
+
+    # Multi-window search: 24h, week
+    windows = [
+        ("24h", lambda: client.search_last_24_hours(query, max_results=max(limit // 2, 3)),
+         ),
+        ("week", lambda: client.search_last_week(query, max_results=limit),
+         ),
     ]
+    for window_name, search_fn in windows:
+        try:
+            response = search_fn()
+            for item in response.webpages:
+                norm = _normalize_search_item(
+                    item,
+                    provider="anspire_search",
+                    source_type=f"anspire:web:{window_name}",
+                    source_name="Anspire Search",
+                    time_window=window_name,
+                    time_weight=_TIME_WINDOW_WEIGHTS.get(window_name, 0.7),
+                )
+                if norm:
+                    items.append(norm)
+        except Exception:
+            pass
+
+    return items
 
 
 def _build_topic_fact_candidates(
@@ -603,6 +889,13 @@ def _map_topic_search_item_to_candidate(
     initial_tags = [str(tag).strip() for tag in tag_candidates if str(tag or "").strip()]
     source_name = str(item.get("source_name") or item.get("provider") or "topic_search").strip()
     source_type = str(item.get("source_type") or "topic_search:web").strip()
+    time_weight = float(item.get("time_weight") or 1.0)
+    base_confidence = 0.62
+    adjusted_confidence = min(0.85, base_confidence * time_weight + 0.10)
+    if item.get("is_structured"):
+        adjusted_confidence = max(adjusted_confidence, 0.68)
+    if item.get("is_image"):
+        adjusted_confidence = max(adjusted_confidence, 0.55)
 
     return {
         "event_id": event_id,
@@ -613,7 +906,11 @@ def _map_topic_search_item_to_candidate(
         "source_type": source_type,
         "raw_excerpt": raw_excerpt,
         "initial_tags": list(dict.fromkeys(initial_tags)),
-        "confidence": 0.62,
+        "confidence": round(adjusted_confidence, 3),
+        "image_urls": [source_url] if item.get("is_image") else [],
+        "structured_data": item.get("is_structured") or False,
+        "time_weight": time_weight,
+        "time_window": str(item.get("time_window") or ""),
         "timeline_candidates": [
             {
                 "timestamp": collected_at,
@@ -668,7 +965,53 @@ def _merge_provider_search_results(provider_results: Sequence[Tuple[str, Sequenc
     return _round_robin_take(grouped_items, limit=limit, key_field="url")
 
 
-def _search_topic_news(context: Dict[str, Any], *, limit: int) -> Tuple[List[Dict[str, Any]], str, List[Dict[str, Any]], List[str]]:
+def _build_search_enrichment_stats(
+    items: Sequence[Dict[str, Any]],
+    *,
+    enrichment_items: Sequence[Dict[str, Any]] = (),
+    extra_queries: Sequence[str] = (),
+    applied_source_ids: Sequence[str] = (),
+    failed_sources: Sequence[Dict[str, Any]] = (),
+) -> Dict[str, Any]:
+    stats: Dict[str, Any] = {
+        "total_items": len(items),
+        "enrichment_items": len(enrichment_items),
+        "extra_queries_used": len(list(extra_queries)),
+        "providers": {},
+    }
+    all_items = list(items) + list(enrichment_items)
+    for provider in applied_source_ids:
+        provider_items = [it for it in all_items if it.get("provider") == provider]
+        window_counts: Dict[str, int] = {}
+        type_counts: Dict[str, int] = {}
+        image_count = 0
+        struct_count = 0
+        for it in provider_items:
+            tw = str(it.get("time_window") or "unknown")
+            window_counts[tw] = window_counts.get(tw, 0) + 1
+            st = str(it.get("source_type") or "unknown")
+            type_counts[st] = type_counts.get(st, 0) + 1
+            if it.get("is_image"):
+                image_count += 1
+            if it.get("is_structured"):
+                struct_count += 1
+        stats["providers"][provider] = {
+            "total": len(provider_items),
+            "by_time_window": window_counts,
+            "by_source_type": type_counts,
+            "image_results": image_count,
+            "structured_data_results": struct_count,
+        }
+    stats["failed_sources"] = list(failed_sources)
+    return stats
+
+
+def _search_topic_news(
+    context: Dict[str, Any],
+    *,
+    limit: int,
+    extra_queries: Sequence[str] = (),
+) -> Tuple[List[Dict[str, Any]], str, List[Dict[str, Any]], List[str], List[Dict[str, Any]]]:
     query = _build_topic_search_query(context)
     tavily_api_key = _settings_value("TAVILY_API_KEY")
     bocha_api_key = _settings_value("BOCHA_WEB_SEARCH_API_KEY")
@@ -688,6 +1031,7 @@ def _search_topic_news(context: Dict[str, Any], *, limit: int) -> Tuple[List[Dic
     provider_results: List[Tuple[str, List[Dict[str, Any]]]] = []
     applied_source_ids: List[str] = []
 
+    # Primary search with main query
     for provider_name, loader in provider_attempts:
         try:
             items = _dedupe_search_items(loader(query))[:limit]
@@ -716,11 +1060,36 @@ def _search_topic_news(context: Dict[str, Any], *, limit: int) -> Tuple[List[Dic
         provider_results.append((provider_name, items))
         applied_source_ids.append(provider_name)
 
+    # Supplementary search with BroadTopic extracted keywords
+    enrichment_items: List[Dict[str, Any]] = []
+    for extra_query in list(extra_queries)[:5]:  # Cap at 5 extra queries
+        combined = f"{extra_query} {context.get('topic', '')}".strip()
+        if not combined:
+            continue
+        for provider_name, loader in provider_attempts:
+            try:
+                extra = _dedupe_search_items(loader(combined))[: max(3, limit // 3)]
+                for item in extra:
+                    item["source_type"] = f"{item.get('source_type', 'search')}:enriched"
+                    item["source_name"] = f"{item.get('source_name', 'Search')} (关键词补充)"
+                    item["time_weight"] = float(item.get("time_weight") or 0.7) * 0.8
+                    enrichment_items.append(item)
+            except Exception:
+                pass
+
     merged_items = _merge_provider_search_results(provider_results, limit=limit)
+    # Append enrichment items after merged results
+    seen_urls = {str(item.get("url") or "").strip().lower() for item in merged_items}
+    for enriched in enrichment_items:
+        url = str(enriched.get("url") or "").strip().lower()
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            merged_items.append(enriched)
+
     if not merged_items:
         raise RealSourceUnavailableError("user_topic real fetch returned no usable search results")
 
-    return merged_items, query, failed_sources, applied_source_ids
+    return merged_items, query, failed_sources, applied_source_ids, list(enrichment_items)
 
 
 def _load_topic_driven_payload(payload: Dict[str, Any], input_options: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -733,7 +1102,21 @@ def _load_topic_driven_payload(payload: Dict[str, Any], input_options: Dict[str,
         default=DEFAULT_TOPIC_DRIVEN_LIMIT,
     )
     collected_at = _utc_timestamp()
-    search_items, query, failed_sources, applied_source_ids = _search_topic_news(context, limit=candidate_limit)
+    extra_queries = list(
+        dict.fromkeys(
+            [
+                q
+                for q in (
+                    list(context.get("extracted_keywords") or [])
+                    + list(context.get("keywords") or [])
+                )
+                if isinstance(q, str) and q.strip()
+            ]
+        )
+    )
+    search_items, query, failed_sources, applied_source_ids, enrichment_items = _search_topic_news(
+        context, limit=candidate_limit, extra_queries=extra_queries,
+    )
 
     topic_candidates: List[Dict[str, Any]] = []
     for rank, item in enumerate(search_items, start=1):
@@ -759,6 +1142,15 @@ def _load_topic_driven_payload(payload: Dict[str, Any], input_options: Dict[str,
         "failed_sources": failed_sources,
         "candidate_count": len(topic_candidates),
         "collected_at": collected_at,
+        "enrichment_keywords": extra_queries,
+        "enrichment_candidates": len(enrichment_items),
+        "search_enrichment": _build_search_enrichment_stats(
+            search_items,
+            enrichment_items=enrichment_items,
+            extra_queries=extra_queries,
+            applied_source_ids=applied_source_ids,
+            failed_sources=failed_sources,
+        ),
     }
 
     return {
