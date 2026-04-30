@@ -479,10 +479,10 @@ def _collect_deep_crawl_args() -> dict | None:
     max_notes = _prompt_int("deep_crawl_max_notes", "每平台最大采集笔记数", default=50, minimum=5)
     server_mode = _prompt_menu(
         "deep_crawl_server_mode",
-        "是否运行在无头 Linux 云服务器？启用后：CDP 模式（系统 Chrome）+ headless + --no-sandbox。",
+        "是否运行在无头 Linux 云服务器？启用后：Xvfb 虚拟显示 + --no-sandbox。",
         [
-            (False, "否", "本地 GUI 环境，可用 Playwright 内置 Chromium。"),
-            (True, "是", "无头服务器，启用 CDP 模式连接系统 Chrome，反爬效果更好。"),
+            (False, "否", "本地 GUI 环境，浏览器有物理显示器，无需 Xvfb。"),
+            (True, "是", "无头服务器，自动启动 Xvfb 虚拟显示（需 apt install xvfb），浏览器行为与桌面一致。"),
         ],
         default_index=1,
     )
