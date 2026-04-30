@@ -19,6 +19,11 @@ from loguru import logger
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
+
+def _get_server_mode() -> bool:
+    """读取环境变量 CLAWRADAR_SERVER_MODE，判断是否运行在无头服务器上。"""
+    return os.environ.get("CLAWRADAR_SERVER_MODE", "").lower() in ("1", "true", "yes")
+
 try:
     import config
 except ImportError:
@@ -26,9 +31,20 @@ except ImportError:
 
 class PlatformCrawler:
     """平台爬虫管理器"""
-    
-    def __init__(self):
-        """初始化平台爬虫管理器"""
+
+    def __init__(self, server_mode: bool | None = None):
+        """初始化平台爬虫管理器
+
+        Args:
+            server_mode: 是否运行在无头服务器模式。None 时读取环境变量
+                CLAWRADAR_SERVER_MODE。
+        """
+        if server_mode is None:
+            server_mode = _get_server_mode()
+        self._server_mode = server_mode
+        self._xvfb_process = None
+        self._xvfb_display = ":99"
+
         self.mediacrawler_path = Path(__file__).parent / "MediaCrawler"
         self.supported_platforms = ['xhs', 'dy', 'ks', 'bili', 'wb', 'tieba', 'zhihu']
         self.crawl_stats = {}
@@ -42,7 +58,113 @@ class PlatformCrawler:
             raise FileNotFoundError("MediaCrawler子模块未初始化，请先运行: git submodule update --init --recursive")
 
         logger.info(f"初始化平台爬虫管理器，MediaCrawler路径: {self.mediacrawler_path}")
-    
+
+        # 一次性修补 MediaCrawler 登录超时：600s → 120s（2分钟）
+        self._patch_login_timeouts()
+
+    def _patch_login_timeouts(self):
+        """修补 MediaCrawler 各平台 login.py 的登录超时和退出行为。
+
+        原始行为：二维码登录等待 600 秒（10 分钟），失败后 sys.exit() 杀死子进程。
+        修补后：等待 120 秒（2 分钟），失败后 sys.exit(42) 由父进程识别为"登录失败跳过"。
+        """
+        platform_dir = self.mediacrawler_path / "media_platform"
+        patched_count = 0
+
+        for platform in self.supported_platforms:
+            # platform key → MediaCrawler directory name
+            _dir_map = {
+                "dy": "douyin",
+                "ks": "kuaishou",
+                "bili": "bilibili",
+                "wb": "weibo",
+            }
+            dir_name = _dir_map.get(platform, platform)
+            login_path = platform_dir / dir_name / "login.py"
+
+            if not login_path or not login_path.is_file():
+                continue
+
+            try:
+                content = login_path.read_text(encoding="utf-8")
+                modified = content
+
+                # 1) 登录超时：600 次 → 120 次（2 分钟，1 秒间隔）
+                modified = modified.replace(
+                    "stop=stop_after_attempt(600)",
+                    "stop=stop_after_attempt(120)",
+                )
+
+                # 2) 登录失败退出码：sys.exit() → sys.exit(42)
+                #    父进程可通过返回码 42 识别为"登录失败，跳过该平台"
+                modified = modified.replace("sys.exit()", "sys.exit(42)")
+
+                if modified != content:
+                    login_path.write_text(modified, encoding="utf-8")
+                    patched_count += 1
+                    logger.info(
+                        f"已修补 {platform} 登录超时: 600s→120s, sys.exit→exit(42)"
+                    )
+            except Exception:
+                logger.warning(f"修补 {platform} login.py 失败，将使用原始超时")
+
+        if patched_count:
+            logger.info(f"登录超时修补完成：{patched_count}/{len(self.supported_platforms)} 个平台")
+        else:
+            logger.info("所有平台登录超时无需修补（可能已修补过）")
+
+    def _start_xvfb(self):
+        """启动 Xvfb 虚拟显示（仅 Linux server_mode）。"""
+        if not self._server_mode:
+            return
+        import sys
+        import time
+        import shutil
+
+        # Xvfb 仅在 Linux 无 GUI 环境需要，Windows/macOS 有原生显示
+        if sys.platform != "linux":
+            logger.info(f"非 Linux 平台 ({sys.platform})，跳过 Xvfb")
+            return
+
+        if not shutil.which("Xvfb"):
+            raise RuntimeError(
+                "Xvfb 未安装，服务器模式需要 Xvfb 虚拟显示。"
+                "  Ubuntu/Debian: sudo apt install xvfb"
+                "  CentOS/RHEL:   sudo yum install xorg-x11-server-Xvfb"
+            )
+
+        # 检查是否已有 Xvfb 在 :99 运行
+        check = subprocess.run(
+            ["xdpyinfo", "-display", self._xvfb_display],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        if check.returncode == 0:
+            logger.info(f"复用已有 Xvfb {self._xvfb_display}")
+            return
+
+        logger.info(f"启动 Xvfb {self._xvfb_display} ...")
+        self._xvfb_process = subprocess.Popen(
+            ["Xvfb", self._xvfb_display, "-screen", "0", "1920x1080x24", "-ac"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        time.sleep(0.5)
+        logger.info(f"Xvfb {self._xvfb_display} 已启动")
+
+    def _stop_xvfb(self):
+        """停止 Xvfb 进程。"""
+        if self._xvfb_process:
+            self._xvfb_process.terminate()
+            try:
+                self._xvfb_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._xvfb_process.kill()
+            logger.info(f"Xvfb {self._xvfb_display} 已停止")
+            self._xvfb_process = None
+
+    def close(self):
+        """关闭资源（停止 Xvfb）。"""
+        self._stop_xvfb()
+
     def configure_mediacrawler_db(self):
         """配置MediaCrawler使用我们的数据库（MySQL或PostgreSQL）"""
         try:
@@ -57,12 +179,12 @@ class PlatformCrawler:
             with open(db_config_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # PostgreSQL配置值：如果使用PostgreSQL则使用MindSpider配置，否则使用默认值或环境变量
-            pg_password = config.settings.DB_PASSWORD if is_postgresql else "bettafish"
-            pg_user = config.settings.DB_USER if is_postgresql else "bettafish"
-            pg_host = config.settings.DB_HOST if is_postgresql else "127.0.0.1"
-            pg_port = config.settings.DB_PORT if is_postgresql else 5444
-            pg_db_name = config.settings.DB_NAME if is_postgresql else "bettafish"
+            # PostgreSQL配置值：统一使用MindSpider配置
+            pg_password = (config.settings.DB_PASSWORD or "")
+            pg_user = (config.settings.DB_USER or "")
+            pg_host = (config.settings.DB_HOST or "127.0.0.1")
+            pg_port = (config.settings.DB_PORT or 5444)
+            pg_db_name = (config.settings.DB_NAME or "")
             
             # 替换数据库配置 - 使用MindSpider的数据库配置
             new_config = f'''# 声明：本代码仅供学习和研究目的使用。使用者应遵守以下原则：  
@@ -146,25 +268,56 @@ postgres_db_config = {{
             # 写入新配置
             with open(db_config_path, 'w', encoding='utf-8') as f:
                 f.write(new_config)
-            
+
             db_type = "PostgreSQL" if is_postgresql else "MySQL"
             logger.info(f"已配置MediaCrawler使用MindSpider {db_type}数据库")
+
+            # 自动创建MediaCrawler平台数据表（幂等，首次运行时建表）
+            try:
+                _mediacrawler_root = str(self.mediacrawler_path)
+                if _mediacrawler_root not in sys.path:
+                    sys.path.insert(0, _mediacrawler_root)
+                from database.models import Base as MCBase
+                from sqlalchemy import create_engine as sync_create_engine
+
+                db_charset = getattr(config.settings, "DB_CHARSET", "utf8mb4") or "utf8mb4"
+                if is_postgresql:
+                    db_url = (
+                        f"postgresql+psycopg://{config.settings.DB_USER}:{config.settings.DB_PASSWORD}"
+                        f"@{config.settings.DB_HOST}:{config.settings.DB_PORT}/{config.settings.DB_NAME}"
+                    )
+                else:
+                    db_url = (
+                        f"mysql+pymysql://{config.settings.DB_USER}:{config.settings.DB_PASSWORD}"
+                        f"@{config.settings.DB_HOST}:{config.settings.DB_PORT}/{config.settings.DB_NAME}"
+                        f"?charset={db_charset}"
+                    )
+
+                _sync_engine = sync_create_engine(db_url, echo=False)
+                MCBase.metadata.create_all(_sync_engine)
+                _sync_engine.dispose()
+                logger.info("MediaCrawler 平台数据表自动创建/校验完成（22 tables）")
+            except Exception as _e:
+                logger.warning(f"MediaCrawler 平台表自动创建失败，将由子进程 init_db 回退: {_e}")
+
             return True
-            
+
         except Exception as e:
             logger.exception(f"配置MediaCrawler数据库失败: {e}")
             return False
     
-    def create_base_config(self, platform: str, keywords: List[str], 
-                          crawler_type: str = "search", max_notes: int = 50) -> bool:
+    def create_base_config(self, platform: str, keywords: List[str],
+                          crawler_type: str = "search", max_notes: int = 50,
+                          login_type: str = "qrcode") -> bool:
         """
         创建MediaCrawler的基础配置
-        
+
         Args:
             platform: 平台名称
             keywords: 关键词列表
             crawler_type: 爬取类型
             max_notes: 最大爬取数量
+            login_type: 登录方式 qrcode/phone/cookie
         
         Returns:
             是否配置成功
@@ -214,7 +367,13 @@ postgres_db_config = {{
                 elif line.startswith('CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = '):
                     replaced = 'CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 20'
                 elif line.startswith('HEADLESS = '):
-                    replaced = 'HEADLESS = True'
+                    replaced = 'HEADLESS = False'
+                elif line.startswith('ENABLE_CDP_MODE = '):
+                    replaced = 'ENABLE_CDP_MODE = False'
+                elif line.startswith('SERVER_MODE = '):
+                    replaced = f'SERVER_MODE = {str(self._server_mode)}'
+                elif line.startswith('LOGIN_TYPE = '):
+                    replaced = f'LOGIN_TYPE = "{login_type}"'
 
                 if replaced is not None:
                     new_lines.append(replaced)
@@ -235,26 +394,26 @@ postgres_db_config = {{
             logger.exception(f"创建基础配置失败: {e}")
             return False
     
-    def run_crawler(self, platform: str, keywords: List[str], 
+    def run_crawler(self, platform: str, keywords: List[str],
                    login_type: str = "qrcode", max_notes: int = 50) -> Dict:
         """
         运行爬虫
-        
+
         Args:
             platform: 平台名称
             keywords: 关键词列表
             login_type: 登录方式
             max_notes: 最大爬取数量
-        
+
         Returns:
             爬取结果统计
         """
         if platform not in self.supported_platforms:
             raise ValueError(f"不支持的平台: {platform}")
-        
+
         if not keywords:
             raise ValueError("关键词列表不能为空")
-        
+
         start_message = f"\n开始爬取平台: {platform}"
         start_message += f"\n关键词: {keywords[:5]}{'...' if len(keywords) > 5 else ''} (共{len(keywords)}个)"
         logger.info(start_message)
@@ -267,7 +426,7 @@ postgres_db_config = {{
                 return {"success": False, "error": "数据库配置失败"}
             
             # 创建基础配置
-            if not self.create_base_config(platform, keywords, "search", max_notes):
+            if not self.create_base_config(platform, keywords, "search", max_notes, login_type):
                 return {"success": False, "error": "基础配置创建失败"}
             
             # 判断数据库类型，确定 save_data_option
@@ -282,21 +441,50 @@ postgres_db_config = {{
                 "--lt", login_type,
                 "--type", "search",
                 "--save_data_option", save_data_option,
-                "--headless", "false"
             ]
-            
+
+            logger.info(f"[{platform}] server_mode: {self._server_mode}")
             logger.info(f"执行命令: {' '.join(cmd)}")
-            
+
+            # 子进程超时控制：
+            #  - 扫码/手机登录：2分钟登录窗口 + 爬取时间，总计 15 分钟
+            #  - cookie 登录：无等待窗口，总计 30 分钟
+            if login_type in ("qrcode", "phone"):
+                subprocess_timeout = 900  # 15 分钟
+            else:
+                subprocess_timeout = 1800  # 30 分钟
+
+            # server_mode: 启动 Xvfb 虚拟显示，传入 DISPLAY 环境变量
+            self._start_xvfb()
+            env = os.environ.copy()
+            if self._server_mode:
+                env["DISPLAY"] = self._xvfb_display
+
             # 切换到MediaCrawler目录并执行
             result = subprocess.run(
                 cmd,
                 cwd=self.mediacrawler_path,
-                timeout=3600  # 60分钟超时
+                timeout=subprocess_timeout,
+                env=env,
             )
-            
+
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
-            
+
+            # 解读返回码
+            return_code = result.returncode
+            if return_code == 42:
+                login_error = True
+                error_message = (
+                    f"登录失败（{login_type}）：2分钟内未完成登录，跳过 {platform} 平台"
+                )
+            elif return_code != 0:
+                login_error = False
+                error_message = f"爬取失败，返回码: {return_code}"
+            else:
+                login_error = False
+                error_message = ""
+
             # 创建统计信息
             crawl_stats = {
                 "platform": platform,
@@ -304,26 +492,37 @@ postgres_db_config = {{
                 "duration_seconds": duration,
                 "start_time": start_time.isoformat(),
                 "end_time": end_time.isoformat(),
-                "return_code": result.returncode,
-                "success": result.returncode == 0,
+                "return_code": return_code,
+                "success": return_code == 0,
+                "login_failed": login_error,
+                "login_type": login_type,
                 "notes_count": 0,
                 "comments_count": 0,
-                "errors_count": 0
+                "errors_count": 0,
             }
-            
+
             # 保存统计信息
             self.crawl_stats[platform] = crawl_stats
-            
-            if result.returncode == 0:
+
+            if return_code == 0:
                 logger.info(f"✅ {platform} 爬取完成，耗时: {duration:.1f}秒")
+            elif login_error:
+                logger.warning(f"🔐 {platform} {error_message}")
             else:
-                logger.error(f"❌ {platform} 爬取失败，返回码: {result.returncode}")
-            
+                logger.error(f"❌ {platform} {error_message}")
+
             return crawl_stats
-            
+
         except subprocess.TimeoutExpired:
-            logger.exception(f"❌ {platform} 爬取超时")
-            return {"success": False, "error": "爬取超时", "platform": platform}
+            logger.warning(
+                f"⏰ {platform} 登录/爬取超时（{login_type}），跳过该平台"
+            )
+            return {
+                "success": False,
+                "error": f"登录超时（{login_type}，{subprocess_timeout}s）",
+                "platform": platform,
+                "login_failed": login_type in ("qrcode", "phone"),
+            }
         except Exception as e:
             logger.exception(f"❌ {platform} 爬取异常: {e}")
             return {"success": False, "error": str(e), "platform": platform}

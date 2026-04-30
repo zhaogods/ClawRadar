@@ -15,16 +15,20 @@ from typing import List, Dict
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from keyword_manager import KeywordManager
-from platform_crawler import PlatformCrawler
+from DeepSentimentCrawling.keyword_manager import KeywordManager
+from DeepSentimentCrawling.platform_crawler import PlatformCrawler
 
 class DeepSentimentCrawling:
     """深度情感爬取主工作流程"""
     
-    def __init__(self):
-        """初始化深度情感爬取"""
+    def __init__(self, server_mode: bool = False):
+        """初始化深度情感爬取
+
+        Args:
+            server_mode: 是否运行在无头服务器模式。
+        """
         self.keyword_manager = KeywordManager()
-        self.platform_crawler = PlatformCrawler()
+        self.platform_crawler = PlatformCrawler(server_mode=server_mode)
         self.supported_platforms = ['xhs', 'dy', 'ks', 'bili', 'wb', 'tieba', 'zhihu']
     
     def run_daily_crawling(self, target_date: date = None, platforms: List[str] = None, 
@@ -188,6 +192,8 @@ class DeepSentimentCrawling:
         """关闭资源"""
         if self.keyword_manager:
             self.keyword_manager.close()
+        if self.platform_crawler:
+            self.platform_crawler.close()
 
 def main():
     """命令行入口"""
