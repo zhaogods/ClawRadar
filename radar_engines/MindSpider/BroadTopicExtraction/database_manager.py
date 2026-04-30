@@ -43,6 +43,7 @@ class DatabaseManager:
             else:
                 url = f"mysql+pymysql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}?charset={settings.DB_CHARSET}"
             self.engine = create_engine(url, future=True)
+            self._ensure_tables()
             logger.info(f"成功连接到数据库: {settings.DB_NAME}")
         except ModuleNotFoundError as e:
             missing: str = str(e)
@@ -57,6 +58,53 @@ class DatabaseManager:
         except Exception as e:
             logger.exception(f"数据库连接失败: {e}")
             raise
+
+    def _ensure_tables(self):
+        """自动创建缺失的数据表（幂等，仅首次执行）"""
+        try:
+            with self.engine.begin() as conn:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS daily_news (
+                        id INT NOT NULL AUTO_INCREMENT,
+                        news_id VARCHAR(128) NOT NULL,
+                        source_platform VARCHAR(32) NOT NULL,
+                        title VARCHAR(500) NOT NULL,
+                        url VARCHAR(512) DEFAULT NULL,
+                        description TEXT,
+                        extra_info TEXT,
+                        crawl_date DATE NOT NULL,
+                        rank_position INT DEFAULT NULL,
+                        add_ts BIGINT NOT NULL,
+                        last_modify_ts BIGINT NOT NULL,
+                        PRIMARY KEY (id),
+                        UNIQUE KEY idx_daily_news_unique (news_id, source_platform, crawl_date),
+                        KEY idx_daily_news_date (crawl_date),
+                        KEY idx_daily_news_platform (source_platform),
+                        KEY idx_daily_news_rank (rank_position)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """))
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS daily_topics (
+                        id INT NOT NULL AUTO_INCREMENT,
+                        topic_id VARCHAR(64) NOT NULL,
+                        topic_name VARCHAR(255) NOT NULL,
+                        topic_description TEXT,
+                        keywords TEXT,
+                        extract_date DATE NOT NULL,
+                        relevance_score FLOAT DEFAULT NULL,
+                        news_count INT DEFAULT 0,
+                        processing_status VARCHAR(16) DEFAULT 'pending',
+                        add_ts BIGINT NOT NULL,
+                        last_modify_ts BIGINT NOT NULL,
+                        PRIMARY KEY (id),
+                        UNIQUE KEY idx_daily_topics_unique (topic_id, extract_date),
+                        KEY idx_daily_topics_date (extract_date),
+                        KEY idx_daily_topics_status (processing_status),
+                        KEY idx_daily_topics_score (relevance_score)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """))
+        except Exception:
+            pass  # 表已存在或权限不足，静默跳过
 
     def close(self):
         """关闭数据库连接"""

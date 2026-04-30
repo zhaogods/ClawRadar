@@ -20,12 +20,15 @@ SQLAlchemy
 asyncpg
 psycopg[binary]
 asyncmy
+greenlet
 cryptography
 
 # ===== 爬虫 =====
 playwright
 beautifulsoup4
 lxml
+xhshow>=0.1.9
+pycryptodome
 
 # ===== 图像/媒体 =====
 Pillow

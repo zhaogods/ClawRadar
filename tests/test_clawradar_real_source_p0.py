@@ -50,7 +50,7 @@ class ClawRadarRealSourceP0TestCase(unittest.TestCase):
 
         with patch(
             "clawradar.real_source._collect_mindspider_news",
-            return_value=(mock_results, {"weibo": "Weibo", "zhihu": "Zhihu"}, "https://newsnow.busiyi.world"),
+            return_value=(mock_results, {"weibo": "Weibo", "zhihu": "Zhihu"}, "https://newsnow.busiyi.world", []),
         ):
             result, context = load_real_source_payload(payload)
 
@@ -90,7 +90,7 @@ class ClawRadarRealSourceP0TestCase(unittest.TestCase):
              patch("clawradar.real_source._search_with_tavily", return_value=tavily_items), \
              patch("clawradar.real_source._search_with_bocha", return_value=bocha_items), \
              patch("clawradar.real_source._search_with_anspire", return_value=anspire_items):
-            items, query, failed_sources, applied_source_ids = real_source._search_topic_news(context, limit=4)
+            items, query, failed_sources, applied_source_ids, enrichment_items = real_source._search_topic_news(context, limit=4)
 
         self.assertIn("latest news", query)
         self.assertEqual(applied_source_ids, ["tavily_news", "bocha_search", "anspire_search"])
@@ -122,6 +122,7 @@ class ClawRadarRealSourceP0TestCase(unittest.TestCase):
                 "AI governance latest news",
                 [],
                 ["tavily_news", "bocha_search"],
+                [],
             ),
         ):
             result, context = load_real_source_payload(payload)

@@ -218,7 +218,7 @@ class clawradarRealSourceAdapterTestCase(unittest.TestCase):
             }
         ]
 
-        with patch("clawradar.real_source._collect_mindspider_news", return_value=(mock_results, {"weibo": "微博热搜"}, "https://newsnow.busiyi.world")):
+        with patch("clawradar.real_source._collect_mindspider_news", return_value=(mock_results, {"weibo": "微博热搜"}, "https://newsnow.busiyi.world", [])):
             result, context = load_real_source_payload(payload)
 
         self.assertEqual(result["request_id"], "req-stage7-real-source")
@@ -246,7 +246,7 @@ class clawradarRealSourceAdapterTestCase(unittest.TestCase):
             }
         ]
 
-        with patch("clawradar.real_source._collect_mindspider_news", return_value=(mock_results, {"weibo": "微博热搜"}, "https://newsnow.busiyi.world")):
+        with patch("clawradar.real_source._collect_mindspider_news", return_value=(mock_results, {"weibo": "微博热搜"}, "https://newsnow.busiyi.world", [])):
             with self.assertRaises(RealSourceUnavailableError):
                 load_real_source_payload(payload)
 

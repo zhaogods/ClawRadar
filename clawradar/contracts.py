@@ -133,6 +133,15 @@ def _normalize_event(event: Dict[str, Any], request_id: str) -> Dict[str, Any]:
         "fact_candidates": fact_candidates,
         "status": CandidateEventStatus.ACCEPTED.value,
     }
+    # Preserve search-enrichment fields when present
+    for passthrough_key in (
+        "image_urls",
+        "structured_data",
+        "time_weight",
+        "time_window",
+    ):
+        if passthrough_key in event and event.get(passthrough_key) is not None:
+            normalized_event[passthrough_key] = deepcopy(event[passthrough_key])
     for field in OPTIONAL_EVENT_PASSTHROUGH_FIELDS:
         if field in event and event.get(field) is not None:
             normalized_event[field] = deepcopy(event[field])

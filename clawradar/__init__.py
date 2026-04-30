@@ -57,6 +57,16 @@ from .writing import (
     topic_radar_write,
     validate_write_payload,
 )
+from .real_source import RealSourceUnavailableError
+from .topics import (
+    TopicCardStatus,
+    TopicRunStatus,
+    UserTopicValidationError,
+    build_crawl_results,
+    build_topic_cards,
+    load_user_topic_payload,
+    topic_cards_to_score_payload,
+)
 
 __all__ = [
     "ErrorCode",
@@ -104,5 +114,13 @@ __all__ = [
     "build_write_rejection",
     "topic_radar_write",
     "validate_write_payload",
+    "RealSourceUnavailableError",
+    "TopicCardStatus",
+    "TopicRunStatus",
+    "UserTopicValidationError",
+    "build_crawl_results",
+    "build_topic_cards",
+    "load_user_topic_payload",
+    "topic_cards_to_score_payload",
 ]
 

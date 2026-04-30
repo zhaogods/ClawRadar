@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
-from .scoring import ScoreDecisionStatus, ScoreRunStatus, ScoreValidationError, validate_score_payload
+from .scoring import ScoreDecisionStatus, ScoreValidationError, validate_score_payload
 
 MAX_WECHAT_TITLE_CHARS = 64
 MAX_WECHAT_TITLE_UTF8_BYTES = MAX_WECHAT_TITLE_CHARS * 4
@@ -484,7 +484,10 @@ def _build_evidence_packet(scored_event: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
 
-    return {
+    evidence_overview = scored_event.get("evidence_overview") or {}
+    deep_crawl_evidence = evidence_overview.get("deep_crawl") if isinstance(evidence_overview, dict) else None
+
+    packet = {
         "core_claim": str(scored_event.get("event_title") or "").strip(),
         "source_support": source_support,
         "timeline_support": timeline_support,
@@ -496,6 +499,9 @@ def _build_evidence_packet(scored_event: Dict[str, Any]) -> Dict[str, Any]:
         ]
         or ["当前结论基于已收集证据，仍需持续跟踪新增来源。"],
     }
+    if isinstance(deep_crawl_evidence, dict):
+        packet["deep_crawl_evidence"] = deep_crawl_evidence
+    return packet
 
 
 def _build_title(scored_event: Dict[str, Any]) -> str:
@@ -897,6 +903,20 @@ def _build_external_writer_inputs(write_request: Dict[str, Any], scored_event: D
             ]
         ),
     ]
+    # Inject deep crawl evidence as an extra report block when present
+    evidence_overview = scored_event.get("evidence_overview") or {}
+    if isinstance(evidence_overview, dict) and evidence_overview.get("deep_crawl"):
+        dc = evidence_overview["deep_crawl"]
+        reports.append(
+            "\n".join(
+                [
+                    "# ClawRadar 深度社媒爬取",
+                    "## 爬取统计",
+                    _json_dump(dc),
+                ]
+            )
+        )
+
     forum_logs = "\n".join(
         [
             f"request_id={str(scored_event.get('request_id') or '').strip()}",

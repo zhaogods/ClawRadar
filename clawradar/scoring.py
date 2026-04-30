@@ -34,6 +34,7 @@ class ScoreDimension(str, Enum):
     NOVELTY = "novelty"
     BUSINESS_RELEVANCE = "business_relevance"
     EXECUTION_READINESS = "execution_readiness"
+    EVIDENCE_RICHNESS = "evidence_richness"
 
 
 class ScoreErrorCode(str, Enum):
@@ -50,11 +51,12 @@ SCORE_REQUIRED_FIELDS: Tuple[str, ...] = (
 
 
 SCORE_WEIGHTS: Dict[str, int] = {
-    ScoreDimension.TIMELINESS.value: 20,
-    ScoreDimension.EVIDENCE_STRENGTH.value: 30,
-    ScoreDimension.NOVELTY.value: 15,
-    ScoreDimension.BUSINESS_RELEVANCE.value: 20,
-    ScoreDimension.EXECUTION_READINESS.value: 15,
+    ScoreDimension.TIMELINESS.value: 18,
+    ScoreDimension.EVIDENCE_STRENGTH.value: 28,
+    ScoreDimension.NOVELTY.value: 13,
+    ScoreDimension.BUSINESS_RELEVANCE.value: 18,
+    ScoreDimension.EXECUTION_READINESS.value: 13,
+    ScoreDimension.EVIDENCE_RICHNESS.value: 10,
 }
 
 
@@ -254,17 +256,31 @@ def _build_risk_flags(event: Dict[str, Any], fact_points: List[Dict[str, Any]]) 
 
 
 def _compute_score_dimensions(event: Dict[str, Any], fact_points: List[Dict[str, Any]], timeline: List[Dict[str, Any]]) -> Dict[str, int]:
-    timeliness = 20 if len(timeline) >= 2 else 14
-    evidence_strength = 28 if len(fact_points) >= 3 else 18 if len(fact_points) >= 2 else 10
-    novelty = 12 if len(_to_string_list(event.get("initial_tags"))) >= 2 else 8
-    business_relevance = 18 if str(event.get("company") or "").strip() else 10
-    execution_readiness = 15 if str(event.get("raw_excerpt") or "").strip() else 8
+    timeliness = 18 if len(timeline) >= 2 else 12
+    evidence_strength = 25 if len(fact_points) >= 3 else 17 if len(fact_points) >= 2 else 10
+    novelty = 10 if len(_to_string_list(event.get("initial_tags"))) >= 2 else 7
+    business_relevance = 16 if str(event.get("company") or "").strip() else 8
+    execution_readiness = 13 if str(event.get("raw_excerpt") or "").strip() else 7
+
+    # Evidence richness: bonus for structured_data, image_urls, time_weight, deep_crawl evidence
+    evidence_richness = 0
+    if isinstance(event.get("structured_data"), dict) and event["structured_data"]:
+        evidence_richness += 3
+    if isinstance(event.get("image_urls"), list) and event["image_urls"]:
+        evidence_richness += 2
+    if event.get("time_weight") is not None:
+        evidence_richness += 2
+    evidence_overview = event.get("evidence_overview") or {}
+    if isinstance(evidence_overview, dict) and evidence_overview.get("deep_crawl"):
+        evidence_richness += 3
+
     return {
         ScoreDimension.TIMELINESS.value: timeliness,
         ScoreDimension.EVIDENCE_STRENGTH.value: evidence_strength,
         ScoreDimension.NOVELTY.value: novelty,
         ScoreDimension.BUSINESS_RELEVANCE.value: business_relevance,
         ScoreDimension.EXECUTION_READINESS.value: execution_readiness,
+        ScoreDimension.EVIDENCE_RICHNESS.value: evidence_richness,
     }
 
 

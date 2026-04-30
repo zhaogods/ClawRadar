@@ -276,6 +276,16 @@ def _build_protocol_event_payload(payload: Dict[str, Any], content_bundle: Dict[
         "content_bundle": deepcopy(content_bundle),
     }
     protocol_payload["content_bundle"]["evidence_pack"] = deepcopy(evidence_pack)
+
+    # Preserve deep_crawl and search_enrichment from scored_event
+    if isinstance(scored_event, dict):
+        evidence_overview = scored_event.get("evidence_overview") or {}
+        if isinstance(evidence_overview, dict) and evidence_overview.get("deep_crawl"):
+            protocol_payload["deep_crawl"] = deepcopy(evidence_overview["deep_crawl"])
+        trace = scored_event.get("trace") or {}
+        if isinstance(trace, dict) and trace.get("search_enrichment"):
+            protocol_payload["search_enrichment"] = deepcopy(trace["search_enrichment"])
+
     return protocol_payload
 
 
@@ -467,17 +477,28 @@ def build_feishu_delivery_message(payload: Dict[str, Any], content_bundle: Dict[
     uncertainty_text = uncertainty_markers[0] if uncertainty_markers else "当前交付仅代表已归档的结构化结果，需结合后续审核继续确认。"
     draft_preview = draft_text[:160] + ("..." if len(draft_text) > 160 else "")
 
-    body_markdown = "\n".join(
-        [
-            f"**请求 ID**：{str(payload.get('request_id') or '').strip()}",
-            f"**事件 ID**：{str(normalized_bundle.get('event_id') or '').strip()}",
-            f"**交付目标**：{delivery_target}",
-            f"**阶段结论**：{str(payload.get('decision_status') or '').strip()}",
-            f"**摘要**：{summary_text}",
-            f"**稿件预览**：{draft_preview}",
-            f"**不确定性提示**：{uncertainty_text}",
-        ]
-    )
+    # Deep crawl coverage summary line
+    deep_crawl_info = payload.get("deep_crawl") or content_bundle.get("evidence_pack", {}).get("deep_crawl_evidence")
+    dc_line = ""
+    if isinstance(deep_crawl_info, dict):
+        platforms = deep_crawl_info.get("platforms", []) or []
+        summary_info = deep_crawl_info.get("summary", {}) or {}
+        total_notes = summary_info.get("total_notes", 0)
+        if platforms or total_notes:
+            dc_line = f"**深度爬取**：覆盖 {len(platforms)} 个平台，共 {total_notes} 条笔记"
+
+    lines = [
+        f"**请求 ID**：{str(payload.get('request_id') or '').strip()}",
+        f"**事件 ID**：{str(normalized_bundle.get('event_id') or '').strip()}",
+        f"**交付目标**：{delivery_target}",
+        f"**阶段结论**：{str(payload.get('decision_status') or '').strip()}",
+        f"**摘要**：{summary_text}",
+        f"**稿件预览**：{draft_preview}",
+        f"**不确定性提示**：{uncertainty_text}",
+    ]
+    if dc_line:
+        lines.append(dc_line)
+    body_markdown = "\n".join(lines)
 
     return {
         "channel": DeliveryChannel.FEISHU.value,
@@ -590,6 +611,11 @@ def _archive_delivery_workspace(
         },
         "scorecard_path": _relative_path(scorecard_path),
     }
+    # Preserve deep_crawl and search_enrichment in archive
+    if event_payload.get("deep_crawl"):
+        payload_snapshot["deep_crawl"] = deepcopy(event_payload["deep_crawl"])
+    if event_payload.get("search_enrichment"):
+        payload_snapshot["search_enrichment"] = deepcopy(event_payload["search_enrichment"])
     _copy_delivery_passthrough_fields(payload, payload_snapshot)
     payload_path = archive_dir / "payload_snapshot.json"
     _write_json(payload_path, payload_snapshot)
