@@ -1,12 +1,15 @@
-# ClawRadar 项目依赖
+# ClawRadar 项目依赖（含 MediaCrawler 爬虫引擎）
 # 安装: pip install -r requirements.txt
 
 # ===== Web 框架 =====
 flask
+fastapi
+uvicorn
 
 # ===== HTTP 请求 =====
 requests
 httpx
+aiofiles
 
 # ===== LLM 接口 =====
 openai
@@ -20,18 +23,30 @@ SQLAlchemy
 asyncpg
 psycopg[binary]
 asyncmy
+aiomysql
+aiosqlite
 greenlet
 cryptography
+alembic
+motor
 
 # ===== 爬虫 =====
 playwright
 beautifulsoup4
 lxml
+parsel
+pyexecjs
 xhshow>=0.1.9
 pycryptodome
+typer>=0.12.3
+tenacity
 
 # ===== 图像/媒体 =====
 Pillow
+opencv-python
+
+# ===== 中文处理 =====
+jieba
 
 # ===== Markdown 渲染 =====
 markdown
@@ -41,12 +56,15 @@ matplotlib
 numpy
 wordcloud
 weasyprint
+pandas
+openpyxl
 
 # ===== 配置/日志 =====
 python-dotenv
 loguru
 pydantic
 pydantic-settings
+pyhumps
 
 # ===== 工具 =====
 json-repair
@@ -55,3 +73,4 @@ eventlet
 
 # ===== 测试 =====
 pytest
+pytest-asyncio
