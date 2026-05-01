@@ -94,11 +94,16 @@ class DouYinLogin(AbstractLogin):
 
     @retry(stop=stop_after_attempt(180), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self):
-        """Check if the current login status is successful and return True otherwise return False"""
+        """Check if the current login status is successful and return True otherwise return False
+
+        Multi-signal detection: URL redirect, login dialog gone, localStorage,
+        cookie, user avatar. Active page refresh every 20s to trigger post-login
+        page state update that the page's own JS may miss in Xvfb.
+        """
         self._qr_check_count = getattr(self, '_qr_check_count', 0) + 1
         cnt = self._qr_check_count
 
-        # Periodic active refresh to trigger post-login redirect
+        # 0. Active page refresh to trigger post-login redirect
         if cnt % 20 == 0 and cnt >= 20 and self._login_page_url:
             utils.logger.info(f"[Douyin] Active refresh #{cnt // 20} — reloading page...")
             try:
@@ -107,24 +112,69 @@ class DouYinLogin(AbstractLogin):
             except Exception as e:
                 utils.logger.info(f"[Douyin] Refresh goto failed: {e}")
 
+        # 1. URL redirect detection
         if self._login_page_url:
             current_url = self.context_page.url
             if current_url != self._login_page_url:
                 utils.logger.info("[Douyin] Login confirmed by URL redirect")
                 return True
 
-        current_cookie = await self.browser_context.cookies()
-        _, cookie_dict = utils.convert_cookies(current_cookie)
+        # 2. Login UI disappeared → verify with state checks
+        try:
+            login_panel_gone = not await self.context_page.is_visible(
+                "xpath=//div[@id='login-panel-new']", timeout=300
+            )
+            qrcode_gone = not await self.context_page.is_visible(
+                "xpath=//div[@id='animate_qrcode_container']", timeout=300
+            )
+            if login_panel_gone and qrcode_gone:
+                # Login dialog closed — check if user is actually logged in
+                user_selectors = [
+                    "xpath=//img[contains(@class, 'avatar')]",
+                    "xpath=//div[contains(@class, 'user-info')]",
+                    "xpath=//span[contains(@class, 'user-name')]",
+                    "xpath=//a[@data-e2e='user-info']",
+                ]
+                for sel in user_selectors:
+                    try:
+                        if await self.context_page.is_visible(sel, timeout=300):
+                            utils.logger.info("[Douyin] Login dialog gone + user element visible")
+                            # Double-check with localStorage
+                            for page in self.browser_context.pages:
+                                try:
+                                    ls = await page.evaluate("() => window.localStorage")
+                                    if ls.get("HasUserLogin", "") == "1":
+                                        utils.logger.info("[Douyin] Confirmed by localStorage")
+                                        return True
+                                except Exception:
+                                    pass
+                            # Check cookie
+                            ck = await self.browser_context.cookies()
+                            _, cd = utils.convert_cookies(ck)
+                            if cd.get("LOGIN_STATUS") == "1":
+                                utils.logger.info("[Douyin] Confirmed by LOGIN_STATUS cookie")
+                                return True
+                            # User element visible + login gone → likely logged in
+                            utils.logger.info("[Douyin] Login confirmed by UI signals (dialog gone + user visible)")
+                            return True
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
+        # 3. localStorage check (standalone, in case UI checks missed)
         for page in self.browser_context.pages:
             try:
                 local_storage = await page.evaluate("() => window.localStorage")
                 if local_storage.get("HasUserLogin", "") == "1":
                     utils.logger.info("[Douyin] Login confirmed by localStorage HasUserLogin")
                     return True
-            except Exception as e:
+            except Exception:
                 await asyncio.sleep(0.1)
 
+        # 4. Cookie-based detection
+        current_cookie = await self.browser_context.cookies()
+        _, cookie_dict = utils.convert_cookies(current_cookie)
         if cookie_dict.get("LOGIN_STATUS") == "1":
             utils.logger.info("[Douyin] Login confirmed by LOGIN_STATUS cookie")
             return True
