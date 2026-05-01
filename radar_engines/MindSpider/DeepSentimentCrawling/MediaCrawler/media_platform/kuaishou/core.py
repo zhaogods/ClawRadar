@@ -61,6 +61,20 @@ class KuaishouCrawler(AbstractCrawler):
         self.cdp_manager = None
         self.ip_proxy_pool = None  # Proxy IP pool, used for automatic proxy refresh
 
+    async def _refresh_and_verify_ks_login(self) -> bool:
+        await self.ks_client.update_cookies(
+            browser_context=self.browser_context,
+            urls=self.cookie_urls,
+        )
+        if await self.ks_client.pong():
+            return True
+        await asyncio.sleep(1)
+        await self.ks_client.update_cookies(
+            browser_context=self.browser_context,
+            urls=self.cookie_urls,
+        )
+        return await self.ks_client.pong()
+
     async def start(self):
         playwright_proxy_format, httpx_proxy_format = None, None
         if config.ENABLE_IP_PROXY:
@@ -105,12 +119,12 @@ class KuaishouCrawler(AbstractCrawler):
                     browser_context=self.browser_context,
                     context_page=self.context_page,
                     cookie_str=config.COOKIES,
+                    api_login_checker=self._refresh_and_verify_ks_login,
                 )
                 await login_obj.begin()
-                await self.ks_client.update_cookies(
-                    browser_context=self.browser_context,
-                    urls=self.cookie_urls,
-                )
+                if not await self._refresh_and_verify_ks_login():
+                    utils.logger.error("[KuaishouCrawler.start] Login completed in browser but API verification still failed")
+                    raise SystemExit(42)
 
             crawler_type_var.set(config.CRAWLER_TYPE)
             if config.CRAWLER_TYPE == "search":

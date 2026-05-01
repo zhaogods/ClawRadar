@@ -21,7 +21,7 @@
 import asyncio
 import functools
 import sys
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from playwright.async_api import BrowserContext, Page
 from tenacity import (RetryError, retry, retry_if_result, stop_after_attempt,
@@ -38,13 +38,15 @@ class KuaishouLogin(AbstractLogin):
                  browser_context: BrowserContext,
                  context_page: Page,
                  login_phone: Optional[str] = "",
-                 cookie_str: str = ""
+                 cookie_str: str = "",
+                 api_login_checker: Optional[Callable[[], Awaitable[bool]]] = None
                  ):
         config.LOGIN_TYPE = login_type
         self.browser_context = browser_context
         self.context_page = context_page
         self.login_phone = login_phone
         self.cookie_str = cookie_str
+        self.api_login_checker = api_login_checker
 
     async def begin(self):
         """Start login kuaishou"""
@@ -63,6 +65,20 @@ class KuaishouLogin(AbstractLogin):
                 sys.exit(42)
         else:
             raise ValueError("[KuaishouLogin.begin] Invalid Login Type Currently only supported qrcode or phone or cookie ...")
+
+    async def _get_cookie_dict(self):
+        cookies = await self.browser_context.cookies()
+        _, cookie_dict = utils.convert_cookies(cookies)
+        return cookie_dict
+
+    async def _check_api_login_state(self) -> bool:
+        if not self.api_login_checker:
+            return False
+        try:
+            return await self.api_login_checker()
+        except Exception as e:
+            utils.logger.info(f"[Kuaishou] API login verification failed: {e}")
+            return False
 
     @retry(stop=stop_after_attempt(180), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, login_page_url: str = "") -> bool:
@@ -96,9 +112,8 @@ class KuaishouLogin(AbstractLogin):
             )
             if qrcode_gone or login_btn_gone:
                 utils.logger.info("[Kuaishou] QR/login button gone, checking signals...")
-                ck = await self.browser_context.cookies()
-                _, cd = utils.convert_cookies(ck)
-                if cd.get("passToken"):
+                cookie_dict = await self._get_cookie_dict()
+                if cookie_dict.get("passToken"):
                     utils.logger.info("[Kuaishou] Login confirmed by passToken cookie")
                     return True
                 user_selectors = [
@@ -112,11 +127,15 @@ class KuaishouLogin(AbstractLogin):
                             return True
                     except Exception:
                         pass
+                if self.api_login_checker:
+                    utils.logger.info("[Kuaishou] Browser signals are weak, verifying login via API...")
+                    if await self._check_api_login_state():
+                        utils.logger.info("[Kuaishou] Login confirmed by API verification")
+                        return True
         except Exception:
             pass
 
-        current_cookie = await self.browser_context.cookies()
-        _, cookie_dict = utils.convert_cookies(current_cookie)
+        cookie_dict = await self._get_cookie_dict()
         if cookie_dict.get("passToken"):
             utils.logger.info("[Kuaishou] Login confirmed by passToken cookie")
             return True
