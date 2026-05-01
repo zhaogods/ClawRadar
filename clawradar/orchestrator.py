@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -26,6 +27,8 @@ from .scoring import (
 from .topics import TopicRunStatus, UserTopicValidationError, build_crawl_results, build_topic_cards, load_user_topic_payload
 from .writing import WriteExecutor, WriteOperation, WriteRunStatus, build_write_rejection, topic_radar_write
 from .notifications import build_notification_payload, topic_radar_notify
+
+_logger = logging.getLogger(__name__)
 
 
 class OrchestratorExecutionMode(str, Enum):

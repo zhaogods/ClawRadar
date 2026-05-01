@@ -775,6 +775,11 @@ def main() -> None:
                 notify_on=args.notify_on or None,
             ),
         )
+        if captured_output:
+            print("\n" + "=" * 60)
+            print("  引擎详细日志")
+            print("=" * 60)
+            print(captured_output)
         _print_publish_only_result(result)
         return
 
@@ -791,6 +796,11 @@ def main() -> None:
             runs_root=Path(args.runs_root) if args.runs_root else None,
         ),
     )
+    if captured_output:
+        print("\n" + "=" * 60)
+        print("  引擎详细日志")
+        print("=" * 60)
+        print(captured_output)
     _print_pipeline_result(result)
 
 
