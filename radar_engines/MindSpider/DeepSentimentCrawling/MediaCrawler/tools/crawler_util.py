@@ -49,13 +49,14 @@ from . import utils
 from .httpx_util import make_async_client
 
 
-async def find_login_qrcode(page: Page, selector: Union[str, List[str], Tuple[str, ...]]) -> str:
+async def find_login_qrcode(page: Page, selector: Union[str, List[str], Tuple[str, ...]], timeout: int = 3000) -> str:
     """find login qrcode image from target selector"""
     selectors = [selector] if isinstance(selector, str) else list(selector)
     for current_selector in selectors:
         try:
             elements = await page.wait_for_selector(
                 selector=current_selector,
+                timeout=timeout,
             )
             login_qrcode_img = str(await elements.get_property("src"))  # type: ignore
             if "http://" in login_qrcode_img or "https://" in login_qrcode_img:
@@ -69,7 +70,7 @@ async def find_login_qrcode(page: Page, selector: Union[str, List[str], Tuple[st
                     raise Exception(f"fetch login image url failed, response message:{resp.text}")
             return login_qrcode_img
         except Exception as e:
-            utils.logger.info(f"[find_login_qrcode] selector failed: {current_selector}, error: {e}")
+            utils.logger.info(f"[find_login_qrcode] selector failed: {current_selector}, timeout={timeout}ms, error: {e}")
             continue
     return ""
 

@@ -147,11 +147,16 @@ class KuaishouLogin(AbstractLogin):
             except Exception:
                 continue
 
-    async def _wait_for_qrcode_dialog(self, selectors: List[str], attempts: int = 6, interval_seconds: float = 0.8) -> str:
+    async def _wait_for_qrcode_dialog(self, selectors: List[str], attempts: int = 6, interval_seconds: float = 0.8, selector_timeout_ms: int = 2500) -> str:
         for attempt in range(1, attempts + 1):
             utils.logger.info(f"[KuaishouLogin] Waiting for QR dialog attempt {attempt}/{attempts}")
+            await self._log_post_scan_state(f"wait_qrcode_attempt_{attempt}")
             for selector in selectors:
-                base64_qrcode_img = await utils.find_login_qrcode(self.context_page, selector=selector)
+                base64_qrcode_img = await utils.find_login_qrcode(
+                    self.context_page,
+                    selector=selector,
+                    timeout=selector_timeout_ms,
+                )
                 if base64_qrcode_img:
                     utils.logger.info(f"[KuaishouLogin] QR dialog found via selector: {selector}")
                     return base64_qrcode_img
@@ -245,13 +250,24 @@ class KuaishouLogin(AbstractLogin):
             "//div[contains(@class, 'qrcode-img')]//img",
             "//img[contains(@src, 'qrcode')]",
         ]
-        base64_qrcode_img = await self._wait_for_qrcode_dialog(qrcode_img_selectors, attempts=3, interval_seconds=0.5)
+        base64_qrcode_img = await self._wait_for_qrcode_dialog(
+            qrcode_img_selectors,
+            attempts=3,
+            interval_seconds=0.5,
+            selector_timeout_ms=1200,
+        )
         if not base64_qrcode_img:
             utils.logger.info(
                 "[KuaishouLogin.login_by_qrcode] QR code dialog not visible yet, trying login button click ..."
             )
             await self._try_open_login_dialog()
-            base64_qrcode_img = await self._wait_for_qrcode_dialog(qrcode_img_selectors, attempts=8, interval_seconds=0.75)
+            await self._log_post_scan_state("after_login_click")
+            base64_qrcode_img = await self._wait_for_qrcode_dialog(
+                qrcode_img_selectors,
+                attempts=8,
+                interval_seconds=0.75,
+                selector_timeout_ms=1500,
+            )
             if not base64_qrcode_img:
                 if self.api_login_checker and await self._check_api_login_state():
                     utils.logger.info("[KuaishouLogin.login_by_qrcode] API already reports logged in, skip QR flow")
