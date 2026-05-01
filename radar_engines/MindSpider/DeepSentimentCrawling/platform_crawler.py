@@ -405,6 +405,7 @@ postgres_db_config = {{
                     cdp_custom_browser_path or "auto-detect",
                 )
             )
+            lines = content.split('\n')
             new_lines = []
             skip_until_paren = False
 
