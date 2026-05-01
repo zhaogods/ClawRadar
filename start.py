@@ -484,7 +484,7 @@ def _collect_deep_crawl_args() -> dict | None:
             (False, "否", "本地 GUI 环境，浏览器有物理显示器，无需 Xvfb。"),
             (True, "是", "云服务器，自动启动 Xvfb 虚拟显示（需 apt install xvfb），浏览器行为与桌面一致。"),
         ],
-        default_index=1,
+        default_index=2,
     )
     login_type = _prompt_menu(
         "deep_crawl_login_type",
