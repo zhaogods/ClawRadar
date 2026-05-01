@@ -49,16 +49,32 @@ class ZhiHuLogin(AbstractLogin):
         self.cookie_str = cookie_str
 
     @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
-    async def check_login_state(self) -> bool:
+    async def check_login_state(self, login_page_url: str = "") -> bool:
         """
-        Check if the current login status is successful and return True otherwise return False
-        Returns:
+        Verify login status: URL redirect + QR canvas disappearance + cookie check.
+        """
+        # 0. URL redirect detection
+        if login_page_url:
+            current_url = self.context_page.url
+            if current_url != login_page_url and "signin" not in current_url.lower():
+                utils.logger.info("[Zhihu] Login confirmed by URL redirect")
+                return True
 
-        """
+        # 1. QR canvas disappeared
+        try:
+            canvas_gone = not await self.context_page.is_visible(
+                "canvas.Qrcode-qrcode", timeout=300
+            )
+            if canvas_gone:
+                utils.logger.info("[Zhihu] QR canvas disappeared, checking cookies...")
+        except Exception:
+            pass
+
+        # 2. Cookie check
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
-        current_web_session = cookie_dict.get("z_c0")
-        if current_web_session:
+        if cookie_dict.get("z_c0"):
+            utils.logger.info("[Zhihu] Login confirmed by z_c0 cookie")
             return True
         return False
 
@@ -92,16 +108,16 @@ class ZhiHuLogin(AbstractLogin):
             if not base64_qrcode_img:
                 sys.exit(42)
 
+        # Capture login page URL for redirect detection
+        login_page_url = self.context_page.url
+
         # show login qrcode
-        # fix issue #12
-        # we need to use partial function to call show_qrcode function and run in executor
-        # then current asyncio event loop will not be blocked
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
         asyncio.get_running_loop().run_in_executor(executor=None, func=partial_show_qrcode)
 
         utils.logger.info(f"[ZhiHu.login_by_qrcode] waiting for scan code login, remaining time is 120s")
         try:
-            await self.check_login_state()
+            await self.check_login_state(login_page_url)
 
         except RetryError:
             utils.logger.info("[ZhiHu.login_by_qrcode] Login zhihu failed by qrcode login method ...")

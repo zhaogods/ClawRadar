@@ -49,37 +49,65 @@ class XiaoHongShuLogin(AbstractLogin):
         self.cookie_str = cookie_str
 
     @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
-    async def check_login_state(self, no_logged_in_session: str) -> bool:
+    async def check_login_state(self, no_logged_in_session: str, login_page_url: str = "") -> bool:
         """
-        Verify login status using dual-check: UI elements and Cookies.
+        Verify login status using multi-signal detection: URL redirect, QR disappearance,
+        UI elements, and cookie change.
         """
-        # 1. Priority check: Check if the "Me" (Profile) node appears in the sidebar
+        # 0. URL redirect detection — page navigated away from login
+        if login_page_url:
+            current_url = self.context_page.url
+            if current_url != login_page_url and "/login" not in current_url.lower():
+                utils.logger.info("[XHS] Login confirmed by URL redirect")
+                return True
+
+        # 1. QR code disappearance + user content appeared
         try:
-            # Selector for elements containing "Me" text with a link pointing to the profile
-            # XPath Explanation: Find a span with text "Me" inside an anchor tag (<a>) 
-            # whose href attribute contains "/user/profile/"
+            qrcode_gone = not await self.context_page.is_visible(
+                "xpath=//img[@class='qrcode-img']", timeout=300
+            )
+            login_dialog_gone = not await self.context_page.is_visible(
+                "div.login-container", timeout=300
+            )
+            if qrcode_gone or login_dialog_gone:
+                # QR/dialog closed — check for user-related signals
+                user_selectors = [
+                    "xpath=//a[contains(@href, '/user/profile/')]//span[text()='我']",
+                    "xpath=//*[@id='app']//div[contains(@class, 'user')]",
+                    "xpath=//div[contains(@class, 'side-bar')]",
+                ]
+                for sel in user_selectors:
+                    try:
+                        if await self.context_page.is_visible(sel, timeout=300):
+                            utils.logger.info("[XHS] Login confirmed by QR gone + user element visible")
+                            return True
+                    except Exception:
+                        pass
+                # Dialog closed but no user element yet — give it more time
+                utils.logger.info("[XHS] Login dialog closed, waiting for user elements...")
+        except Exception:
+            pass
+
+        # 2. UI element check — "Me" button in sidebar
+        try:
             user_profile_selector = "xpath=//a[contains(@href, '/user/profile/')]//span[text()='我']"
-            
-            # Set a short timeout since this is called within a retry loop
             is_visible = await self.context_page.is_visible(user_profile_selector, timeout=500)
             if is_visible:
-                utils.logger.info("[XiaoHongShuLogin.check_login_state] Login status confirmed by UI element ('Me' button).")
+                utils.logger.info("[XHS] Login confirmed by UI element ('Me' button)")
                 return True
         except Exception:
             pass
 
-        # 2. Alternative: Check for CAPTCHA prompt
+        # 3. CAPTCHA appeared
         if "请通过验证" in await self.context_page.content():
-            utils.logger.info("[XiaoHongShuLogin.check_login_state] CAPTCHA appeared, please verify manually.")
+            utils.logger.info("[XHS] CAPTCHA appeared, please verify manually")
 
-        # 3. Compatibility fallback: Original Cookie-based change detection
+        # 4. Cookie-based change detection
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
         current_web_session = cookie_dict.get("web_session")
-        
-        # If web_session has changed, consider the login successful
         if current_web_session and current_web_session != no_logged_in_session:
-            utils.logger.info("[XiaoHongShuLogin.check_login_state] Login status confirmed by Cookie (web_session changed).")
+            utils.logger.info("[XHS] Login confirmed by Cookie (web_session changed)")
             return True
 
         return False
@@ -187,21 +215,21 @@ class XiaoHongShuLogin(AbstractLogin):
             if not base64_qrcode_img:
                 sys.exit(42)
 
+        # Capture login page URL for redirect detection
+        login_page_url = self.context_page.url
+
         # get not logged session
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
         no_logged_in_session = cookie_dict.get("web_session")
 
         # show login qrcode
-        # fix issue #12
-        # we need to use partial function to call show_qrcode function and run in executor
-        # then current asyncio event loop will not be blocked
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
         asyncio.get_running_loop().run_in_executor(executor=None, func=partial_show_qrcode)
 
         utils.logger.info(f"[XiaoHongShuLogin.login_by_qrcode] waiting for scan code login, remaining time is 120s")
         try:
-            await self.check_login_state(no_logged_in_session)
+            await self.check_login_state(no_logged_in_session, login_page_url)
         except RetryError:
             utils.logger.info("[XiaoHongShuLogin.login_by_qrcode] Login xiaohongshu failed by qrcode login method ...")
             sys.exit(42)

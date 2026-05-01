@@ -49,6 +49,7 @@ class DouYinLogin(AbstractLogin):
         self.login_phone = login_phone
         self.scan_qrcode_time = 60
         self.cookie_str = cookie_str
+        self._login_page_url = ""
 
     async def begin(self):
         """
@@ -58,6 +59,9 @@ class DouYinLogin(AbstractLogin):
 
         # popup login dialog
         await self.popup_login_dialog()
+
+        # Capture login page URL for redirect detection
+        self._login_page_url = self.context_page.url
 
         # select login type
         if config.LOGIN_TYPE == "qrcode":
@@ -91,6 +95,13 @@ class DouYinLogin(AbstractLogin):
     @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self):
         """Check if the current login status is successful and return True otherwise return False"""
+        # URL redirect detection (login page URL captured in begin/login_by_qrcode)
+        if self._login_page_url:
+            current_url = self.context_page.url
+            if current_url != self._login_page_url:
+                utils.logger.info("[Douyin] Login confirmed by URL redirect")
+                return True
+
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
 
@@ -98,12 +109,13 @@ class DouYinLogin(AbstractLogin):
             try:
                 local_storage = await page.evaluate("() => window.localStorage")
                 if local_storage.get("HasUserLogin", "") == "1":
+                    utils.logger.info("[Douyin] Login confirmed by localStorage HasUserLogin")
                     return True
             except Exception as e:
-                # utils.logger.warn(f"[DouYinLogin] check_login_state waring: {e}")
                 await asyncio.sleep(0.1)
 
         if cookie_dict.get("LOGIN_STATUS") == "1":
+            utils.logger.info("[Douyin] Login confirmed by LOGIN_STATUS cookie")
             return True
 
         return False

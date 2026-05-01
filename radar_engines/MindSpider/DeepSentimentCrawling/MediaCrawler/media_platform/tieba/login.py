@@ -48,18 +48,20 @@ class BaiduTieBaLogin(AbstractLogin):
         self.cookie_str = cookie_str
 
     @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
-    async def check_login_state(self) -> bool:
+    async def check_login_state(self, login_page_url: str = "") -> bool:
         """
-        Poll to check if login status is successful, return True if successful, otherwise return False
-
-        Returns:
-
+        Verify login status: URL redirect + cookie checks.
         """
+        if login_page_url:
+            current_url = self.context_page.url
+            if current_url != login_page_url and "login" not in current_url.lower():
+                utils.logger.info("[Tieba] Login confirmed by URL redirect")
+                return True
+
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
-        stoken = cookie_dict.get("STOKEN")
-        ptoken = cookie_dict.get("PTOKEN")
-        if stoken or ptoken:
+        if cookie_dict.get("STOKEN") or cookie_dict.get("PTOKEN"):
+            utils.logger.info("[Tieba] Login confirmed by STOKEN/PTOKEN cookie")
             return True
         return False
 
@@ -102,16 +104,16 @@ class BaiduTieBaLogin(AbstractLogin):
                 utils.logger.info("[BaiduTieBaLogin.login_by_qrcode] login failed , have not found qrcode please check ....")
                 sys.exit(42)
 
+        # Capture login page URL for redirect detection
+        login_page_url = self.context_page.url
+
         # show login qrcode
-        # fix issue #12
-        # we need to use partial function to call show_qrcode function and run in executor
-        # then current asyncio event loop will not be blocked
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
         asyncio.get_running_loop().run_in_executor(executor=None, func=partial_show_qrcode)
 
         utils.logger.info(f"[BaiduTieBaLogin.login_by_qrcode] waiting for scan code login, remaining time is 120s")
         try:
-            await self.check_login_state()
+            await self.check_login_state(login_page_url)
         except RetryError:
             utils.logger.info("[BaiduTieBaLogin.login_by_qrcode] Login baidutieba failed by qrcode login method ...")
             sys.exit(42)

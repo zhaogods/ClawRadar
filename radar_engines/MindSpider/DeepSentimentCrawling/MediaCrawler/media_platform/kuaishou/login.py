@@ -59,16 +59,20 @@ class KuaishouLogin(AbstractLogin):
             raise ValueError("[KuaishouLogin.begin] Invalid Login Type Currently only supported qrcode or phone or cookie ...")
 
     @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
-    async def check_login_state(self) -> bool:
+    async def check_login_state(self, login_page_url: str = "") -> bool:
         """
-            Check if the current login status is successful and return True otherwise return False
-            retry decorator will retry 20 times if the return value is False, and the retry interval is 1 second
-            if max retry times reached, raise RetryError
+        Verify login status: URL redirect + QR disappearance + cookie check.
         """
+        if login_page_url:
+            current_url = self.context_page.url
+            if current_url != login_page_url and "login" not in current_url.lower():
+                utils.logger.info("[Kuaishou] Login confirmed by URL redirect")
+                return True
+
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
-        kuaishou_pass_token = cookie_dict.get("passToken")
-        if kuaishou_pass_token:
+        if cookie_dict.get("passToken"):
+            utils.logger.info("[Kuaishou] Login confirmed by passToken cookie")
             return True
         return False
 
@@ -92,6 +96,8 @@ class KuaishouLogin(AbstractLogin):
             utils.logger.info("[KuaishouLogin.login_by_qrcode] login failed , have not found qrcode please check ....")
             sys.exit(42)
 
+        # Capture login page URL for redirect detection
+        login_page_url = self.context_page.url
 
         # show login qrcode
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
@@ -99,7 +105,7 @@ class KuaishouLogin(AbstractLogin):
 
         utils.logger.info(f"[KuaishouLogin.login_by_qrcode] waiting for scan code login, remaining time is 20s")
         try:
-            await self.check_login_state()
+            await self.check_login_state(login_page_url)
         except RetryError:
             utils.logger.info("[KuaishouLogin.login_by_qrcode] Login kuaishou failed by qrcode login method ...")
             sys.exit(42)

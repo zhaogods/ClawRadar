@@ -67,18 +67,36 @@ class WeiboLogin(AbstractLogin):
 
 
     @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
-    async def check_login_state(self, no_logged_in_session: str) -> bool:
+    async def check_login_state(self, no_logged_in_session: str, login_page_url: str = "") -> bool:
         """
-            Check if the current login status is successful and return True otherwise return False
-            retry decorator will retry 20 times if the return value is False, and the retry interval is 1 second
-            if max retry times reached, raise RetryError
+        Verify login status: URL redirect + QR disappearance + cookie checks.
         """
+        # 0. URL redirect detection — passport.weibo.com → weibo.com
+        if login_page_url:
+            current_url = self.context_page.url
+            if current_url != login_page_url and "passport.weibo.com" not in current_url:
+                utils.logger.info("[Weibo] Login confirmed by URL redirect")
+                return True
+
+        # 1. QR code disappeared (login dialog closed)
+        try:
+            qrcode_gone = not await self.context_page.is_visible(
+                "xpath=//img[@class='w-full h-full']", timeout=300
+            )
+            if qrcode_gone:
+                utils.logger.info("[Weibo] QR code disappeared, checking cookies...")
+        except Exception:
+            pass
+
+        # 2. Cookie checks
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
         if cookie_dict.get("SSOLoginState"):
+            utils.logger.info("[Weibo] Login confirmed by SSOLoginState cookie")
             return True
         current_web_session = cookie_dict.get("WBPSESS")
-        if current_web_session != no_logged_in_session:
+        if current_web_session and current_web_session != no_logged_in_session:
+            utils.logger.info("[Weibo] Login confirmed by WBPSESS change")
             return True
         return False
 
@@ -96,6 +114,9 @@ class WeiboLogin(AbstractLogin):
             utils.logger.info("[WeiboLogin.login_by_qrcode] login failed , have not found qrcode please check ....")
             sys.exit(42)
 
+        # Capture SSO login page URL for redirect detection
+        login_page_url = self.context_page.url
+
         # show login qrcode
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
         asyncio.get_running_loop().run_in_executor(executor=None, func=partial_show_qrcode)
@@ -108,7 +129,7 @@ class WeiboLogin(AbstractLogin):
         no_logged_in_session = cookie_dict.get("WBPSESS")
 
         try:
-            await self.check_login_state(no_logged_in_session)
+            await self.check_login_state(no_logged_in_session, login_page_url)
         except RetryError:
             utils.logger.info("[WeiboLogin.login_by_qrcode] Login weibo failed by qrcode login method ...")
             sys.exit(42)
