@@ -42,8 +42,8 @@ def _parse_args() -> argparse.Namespace:
                         help="Use test mode for deep crawl (reduced volume).")
 
     # server mode
-    parser.add_argument("--server-mode", action="store_true",
-                        help="Run headless on cloud server (forces headless, --no-sandbox, terminal QR code).")
+    parser.add_argument("--server-mode", action="store_const", const=True, default=None,
+                        help="Run in cloud server mode with Xvfb virtual display (auto-detected if omitted).")
 
     # entry options JSON override
     parser.add_argument("--entry-options", default="",
@@ -118,7 +118,7 @@ def _build_payload(args: argparse.Namespace) -> dict:
             "max_keywords": getattr(args, "deep_crawl_max_keywords", 50),
             "max_notes": getattr(args, "deep_crawl_max_notes", 50),
             "test_mode": getattr(args, "deep_crawl_test_mode", False),
-            "server_mode": getattr(args, "server_mode", False),
+            "server_mode": getattr(args, "server_mode", None),
         }
 
     if notification_channel or notification_target or notify_on or notification_options:

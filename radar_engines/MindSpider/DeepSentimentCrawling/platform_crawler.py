@@ -21,8 +21,25 @@ sys.path.append(str(project_root))
 
 
 def _get_server_mode() -> bool:
-    """读取环境变量 CLAWRADAR_SERVER_MODE，判断是否运行在无头服务器上。"""
-    return os.environ.get("CLAWRADAR_SERVER_MODE", "").lower() in ("1", "true", "yes")
+    """检测是否运行在无 GUI 的 Linux 云服务器上。
+
+    优先级：
+    1. 环境变量 CLAWRADAR_SERVER_MODE（1/true/yes = 强制启用，0/false/no = 强制禁用）
+    2. 自动检测：Linux 且无 DISPLAY 环境变量 → 视为云服务器
+    """
+    import sys as _sys
+
+    env_val = os.environ.get("CLAWRADAR_SERVER_MODE", "").lower()
+    if env_val in ("1", "true", "yes"):
+        return True
+    if env_val in ("0", "false", "no"):
+        return False
+
+    # Auto-detect: Linux without DISPLAY → headless server
+    if _sys.platform == "linux" and not os.environ.get("DISPLAY"):
+        return True
+
+    return False
 
 try:
     import config

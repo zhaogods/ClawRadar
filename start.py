@@ -477,14 +477,18 @@ def _collect_deep_crawl_args() -> dict | None:
     )
     max_keywords = _prompt_int("deep_crawl_max_keywords", "每平台最大关键词数", default=50, minimum=5)
     max_notes = _prompt_int("deep_crawl_max_notes", "每平台最大采集笔记数", default=50, minimum=5)
+    # Auto-detect server_mode
+    import sys as _sys
+    auto_server = _sys.platform == "linux" and not os.environ.get("DISPLAY")
     server_mode = _prompt_menu(
         "deep_crawl_server_mode",
-        "是否运行在 Linux 云服务器（无物理显示器）？启用后：Xvfb 虚拟显示 + --no-sandbox。",
+        "是否运行在 Linux 云服务器（无物理显示器）？"
+        + ("（自动检测：是）" if auto_server else "（自动检测：否）"),
         [
-            (False, "否", "本地 GUI 环境，浏览器有物理显示器，无需 Xvfb。"),
             (True, "是", "云服务器，自动启动 Xvfb 虚拟显示（需 apt install xvfb），浏览器行为与桌面一致。"),
+            (False, "否", "本地 GUI 环境，浏览器有物理显示器，无需 Xvfb。"),
         ],
-        default_index=2,
+        default_index=1 if auto_server else 2,
     )
     login_type = _prompt_menu(
         "deep_crawl_login_type",

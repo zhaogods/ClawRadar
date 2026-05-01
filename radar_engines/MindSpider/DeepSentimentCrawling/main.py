@@ -21,11 +21,11 @@ from DeepSentimentCrawling.platform_crawler import PlatformCrawler
 class DeepSentimentCrawling:
     """深度情感爬取主工作流程"""
     
-    def __init__(self, server_mode: bool = False):
+    def __init__(self, server_mode: bool | None = None):
         """初始化深度情感爬取
 
         Args:
-            server_mode: 是否运行在无头服务器模式。
+            server_mode: 是否运行在无头服务器模式。None 时自动检测（Linux 且无 DISPLAY → True）。
         """
         self.keyword_manager = KeywordManager()
         self.platform_crawler = PlatformCrawler(server_mode=server_mode)

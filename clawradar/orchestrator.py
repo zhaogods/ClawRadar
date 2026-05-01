@@ -342,7 +342,7 @@ def _build_entry_resolution(
     deep_crawl_max_notes = int(deep_crawl_options.get("max_notes") or 50)
     deep_crawl_test_mode = bool(deep_crawl_options.get("test_mode") or False)
     deep_crawl_login_type = str(deep_crawl_options.get("login_type") or "qrcode")
-    deep_crawl_server_mode = bool(deep_crawl_options.get("server_mode") or False)
+    deep_crawl_server_mode = deep_crawl_options.get("server_mode")  # None = auto-detect
 
     if delivery_target_mode == "archive_only":
         if delivery_channel is not None:
