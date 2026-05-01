@@ -144,7 +144,7 @@ def _run_deep_sentiment_crawling(
     max_keywords: int = 50,
     max_notes: int = 50,
     test_mode: bool = False,
-    login_type: str = "qrcode",
+    login_type: str = "auto",
     server_mode: bool | None = None,
 ) -> Dict[str, Any]:
     """Run MindSpider DeepSentimentCrawling on selected social media platforms.

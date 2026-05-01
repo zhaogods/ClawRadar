@@ -416,8 +416,23 @@ postgres_db_config = {{
             logger.exception(f"创建基础配置失败: {e}")
             return False
     
+    def _detect_login_state(self, platform: str) -> bool:
+        """检测指定平台是否已有浏览器登录态（Cookie 数据库中是否有实际数据）。
+
+        判据：browser_data/{platform}_user_data_dir/Default/Network/Cookies 文件 > 30KB。
+        空 Chromium Cookie DB 约 20KB，有实际登录 cookie 后通常 > 30KB。
+        """
+        cookie_db = (self.mediacrawler_path / "browser_data"
+                     / f"{platform}_user_data_dir" / "Default" / "Network" / "Cookies")
+        try:
+            if cookie_db.is_file() and cookie_db.stat().st_size > 30720:
+                return True
+        except OSError:
+            pass
+        return False
+
     def run_crawler(self, platform: str, keywords: List[str],
-                   login_type: str = "qrcode", max_notes: int = 50) -> Dict:
+                   login_type: str = "auto", max_notes: int = 50) -> Dict:
         """
         运行爬虫
 
@@ -447,10 +462,17 @@ postgres_db_config = {{
             if not self.configure_mediacrawler_db():
                 return {"success": False, "error": "数据库配置失败"}
             
-            # 创建基础配置
-            if not self.create_base_config(platform, keywords, "search", max_notes, login_type):
+            # 自动检测登录方式：有 cookie 状态 → cookie，无 → qrcode
+            effective_login_type = login_type
+            if login_type == "auto":
+                has_state = self._detect_login_state(platform)
+                effective_login_type = "cookie" if has_state else "qrcode"
+                logger.info(f"[{platform}] 自动检测登录方式: {'cookie (已有登录态)' if has_state else 'qrcode (首次登录)'}")
+
+            # 创建基础配置（用实际登录方式，MediaCrawler 不支持 "auto"）
+            if not self.create_base_config(platform, keywords, "search", max_notes, effective_login_type):
                 return {"success": False, "error": "基础配置创建失败"}
-            
+
             # 判断数据库类型，确定 save_data_option
             db_dialect = (config.settings.DB_DIALECT or "mysql").lower()
             is_postgresql = db_dialect in ("postgresql", "postgres")
@@ -460,7 +482,7 @@ postgres_db_config = {{
             cmd = [
                 sys.executable, "main.py",
                 "--platform", platform,
-                "--lt", login_type,
+                "--lt", effective_login_type,
                 "--type", "search",
                 "--save_data_option", save_data_option,
             ]
@@ -471,7 +493,7 @@ postgres_db_config = {{
             # 子进程超时控制：
             #  - 扫码/手机登录：2分钟登录窗口 + 爬取时间，总计 15 分钟
             #  - cookie 登录：无等待窗口，总计 30 分钟
-            if login_type in ("qrcode", "phone"):
+            if effective_login_type in ("qrcode", "phone"):
                 subprocess_timeout = 900  # 15 分钟
             else:
                 subprocess_timeout = 1800  # 30 分钟
@@ -492,15 +514,28 @@ postgres_db_config = {{
                 env=env,
             )
 
+            return_code = result.returncode
+
+            # cookie 登录失败（返回码 42）且非手动指定时，自动回退到 qrcode
+            if return_code == 42 and effective_login_type == "cookie" and login_type == "auto":
+                logger.warning(f"[{platform}] cookie 登录失败，自动回退到 qrcode 扫码登录...")
+                cmd[cmd.index("--lt") + 1] = "qrcode"
+                logger.info(f"重试命令: {' '.join(cmd)}")
+                result = subprocess.run(
+                    cmd,
+                    cwd=self.mediacrawler_path,
+                    timeout=900,  # qrcode 15 分钟超时
+                    env=env,
+                )
+                return_code = result.returncode
+                effective_login_type = "qrcode"
+
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
-
-            # 解读返回码
-            return_code = result.returncode
             if return_code == 42:
                 login_error = True
                 error_message = (
-                    f"登录失败（{login_type}）：2分钟内未完成登录，跳过 {platform} 平台"
+                    f"登录失败（{effective_login_type}）：2分钟内未完成登录，跳过 {platform} 平台"
                 )
             elif return_code != 0:
                 login_error = False
@@ -519,7 +554,7 @@ postgres_db_config = {{
                 "return_code": return_code,
                 "success": return_code == 0,
                 "login_failed": login_error,
-                "login_type": login_type,
+                "login_type": effective_login_type,
                 "notes_count": 0,
                 "comments_count": 0,
                 "errors_count": 0,

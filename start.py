@@ -492,10 +492,10 @@ def _collect_deep_crawl_args() -> dict | None:
     )
     login_type = _prompt_menu(
         "deep_crawl_login_type",
-        "选择社媒平台登录方式。（服务器模式下 QR 码通过终端字符渲染，手机可直接扫码。）",
+        "选择社媒平台登录方式。",
         [
+            ("auto", "自动（推荐）", "自动检测各平台登录态：有 cookie → cookie，无 → qrcode。"),
             ("qrcode", "扫码登录", "二维码扫码登录。无 GUI 时终端显示 Unicode QR 码。"),
-            ("phone", "手机号登录", "通过手机验证码登录（需外部 SMS Redis）。"),
             ("cookie", "Cookie 登录", "通过浏览器 Cookie 登录（需提前从桌面浏览器导出）。"),
         ],
         default_index=0,
