@@ -21,7 +21,7 @@
 import asyncio
 import functools
 import sys
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, List, Optional
 
 from playwright.async_api import BrowserContext, Page
 from tenacity import (RetryError, retry, retry_if_result, stop_after_attempt,
@@ -80,6 +80,51 @@ class KuaishouLogin(AbstractLogin):
             utils.logger.info(f"[Kuaishou] API login verification failed: {e}")
             return False
 
+    async def _try_open_login_dialog(self) -> None:
+        login_entry_selectors = [
+            "xpath=//p[text()='登录']",
+            "xpath=//span[text()='登录']",
+            "xpath=//div[contains(text(), '登录')]",
+            "xpath=//button[contains(., '登录')]",
+        ]
+        for selector in login_entry_selectors:
+            try:
+                login_entry_ele = self.context_page.locator(selector)
+                if not await login_entry_ele.is_visible(timeout=1500):
+                    continue
+                utils.logger.info(f"[KuaishouLogin] Trying login entry selector: {selector}")
+                try:
+                    await login_entry_ele.click(timeout=5000)
+                    utils.logger.info(f"[KuaishouLogin] Login entry clicked via normal click: {selector}")
+                    return
+                except Exception as click_err:
+                    utils.logger.info(f"[KuaishouLogin] Normal click failed for {selector}: {click_err}")
+                    try:
+                        await login_entry_ele.click(force=True, timeout=5000)
+                        utils.logger.info(f"[KuaishouLogin] Login entry clicked via force click: {selector}")
+                        return
+                    except Exception as force_err:
+                        utils.logger.info(f"[KuaishouLogin] Force click failed for {selector}: {force_err}")
+                        try:
+                            await login_entry_ele.evaluate("(el) => el.click()")
+                            utils.logger.info(f"[KuaishouLogin] Login entry clicked via DOM click: {selector}")
+                            return
+                        except Exception as dom_err:
+                            utils.logger.info(f"[KuaishouLogin] DOM click failed for {selector}: {dom_err}")
+            except Exception:
+                continue
+
+    async def _wait_for_qrcode_dialog(self, selectors: List[str], attempts: int = 6, interval_seconds: float = 0.8) -> str:
+        for attempt in range(1, attempts + 1):
+            utils.logger.info(f"[KuaishouLogin] Waiting for QR dialog attempt {attempt}/{attempts}")
+            for selector in selectors:
+                base64_qrcode_img = await utils.find_login_qrcode(self.context_page, selector=selector)
+                if base64_qrcode_img:
+                    utils.logger.info(f"[KuaishouLogin] QR dialog found via selector: {selector}")
+                    return base64_qrcode_img
+            await asyncio.sleep(interval_seconds)
+        return ""
+
     @retry(stop=stop_after_attempt(180), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, login_page_url: str = "") -> bool:
         """
@@ -102,14 +147,29 @@ class KuaishouLogin(AbstractLogin):
                 utils.logger.info("[Kuaishou] Login confirmed by URL redirect")
                 return True
 
-        # QR code / login dialog disappeared → verify
+        qrcode_selectors = [
+            "//div[@class='qrcode-img']//img",
+            "//div[contains(@class, 'qrcode-img')]//img",
+            "//img[contains(@src, 'qrcode')]",
+        ]
+        login_button_selectors = [
+            "xpath=//p[text()='登录']",
+            "xpath=//span[text()='登录']",
+            "xpath=//div[contains(text(), '登录')]",
+            "xpath=//button[contains(., '登录')]",
+        ]
+
         try:
-            qrcode_gone = not await self.context_page.is_visible(
-                "//div[@class='qrcode-img']//img", timeout=300
-            )
-            login_btn_gone = not await self.context_page.is_visible(
-                "xpath=//p[text()='登录']", timeout=300
-            )
+            qrcode_gone = True
+            for selector in qrcode_selectors:
+                if await self.context_page.is_visible(selector, timeout=300):
+                    qrcode_gone = False
+                    break
+            login_btn_gone = True
+            for selector in login_button_selectors:
+                if await self.context_page.is_visible(selector, timeout=300):
+                    login_btn_gone = False
+                    break
             if qrcode_gone or login_btn_gone:
                 utils.logger.info("[Kuaishou] QR/login button gone, checking signals...")
                 cookie_dict = await self._get_cookie_dict()
@@ -145,39 +205,22 @@ class KuaishouLogin(AbstractLogin):
         """login kuaishou website and keep webdriver login state"""
         utils.logger.info("[KuaishouLogin.login_by_qrcode] Begin login kuaishou by qrcode ...")
 
-        # If the QR dialog is already visible, do not click the login entry again.
-        qrcode_img_selector = "//div[@class='qrcode-img']//img"
-        base64_qrcode_img = await utils.find_login_qrcode(
-            self.context_page,
-            selector=qrcode_img_selector
-        )
+        qrcode_img_selectors = [
+            "//div[@class='qrcode-img']//img",
+            "//div[contains(@class, 'qrcode-img')]//img",
+            "//img[contains(@src, 'qrcode')]",
+        ]
+        base64_qrcode_img = await self._wait_for_qrcode_dialog(qrcode_img_selectors, attempts=3, interval_seconds=0.5)
         if not base64_qrcode_img:
             utils.logger.info(
                 "[KuaishouLogin.login_by_qrcode] QR code dialog not visible yet, trying login button click ..."
             )
-            login_button_ele = self.context_page.locator(
-                "xpath=//p[text()='登录']"
-            )
-            try:
-                await login_button_ele.click(timeout=5000)
-            except Exception as click_err:
-                utils.logger.info(
-                    f"[KuaishouLogin.login_by_qrcode] Normal click failed, retrying with force=True: {click_err}"
-                )
-                try:
-                    await login_button_ele.click(force=True, timeout=5000)
-                except Exception as force_err:
-                    utils.logger.info(
-                        f"[KuaishouLogin.login_by_qrcode] force click failed, retrying with DOM click: {force_err}"
-                    )
-                    await login_button_ele.evaluate("(el) => el.click()")
-
-            await asyncio.sleep(0.5)
-            base64_qrcode_img = await utils.find_login_qrcode(
-                self.context_page,
-                selector=qrcode_img_selector
-            )
+            await self._try_open_login_dialog()
+            base64_qrcode_img = await self._wait_for_qrcode_dialog(qrcode_img_selectors, attempts=8, interval_seconds=0.75)
             if not base64_qrcode_img:
+                if self.api_login_checker and await self._check_api_login_state():
+                    utils.logger.info("[KuaishouLogin.login_by_qrcode] API already reports logged in, skip QR flow")
+                    return
                 utils.logger.info("[KuaishouLogin.login_by_qrcode] login failed , have not found qrcode please check ....")
                 sys.exit(42)
         else:
