@@ -128,21 +128,52 @@ class XiaoHongShuLogin(AbstractLogin):
         if "请通过验证" in await self.context_page.content():
             utils.logger.info("[XHS] CAPTCHA appeared, please verify manually")
 
-        # 5. Cookie-based change detection (trusted — cookie changes only on real login)
+        # 5. Cookie-based detection
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
         current_web_session = cookie_dict.get("web_session")
+
+        # 5a. Cookie changed → definitely logged in
         if current_web_session and current_web_session != no_logged_in_session:
             utils.logger.info("[XHS] Login confirmed by Cookie (web_session changed)")
             return True
+
+        # 5b. Cookie exists but unchanged + QR gone → verify via API
+        #     (cookie may persist from prior login in same browser session,
+        #      so it won't change on re-login even though user scanned QR)
+        if current_web_session and current_web_session == no_logged_in_session:
+            try:
+                qrcode_still_there = await self.context_page.is_visible(
+                    "xpath=//img[@class='qrcode-img']", timeout=200
+                )
+                login_dialog_still_there = await self.context_page.is_visible(
+                    "div.login-container", timeout=200
+                )
+                if not qrcode_still_there and not login_dialog_still_there:
+                    utils.logger.info("[XHS] QR gone + existing web_session (unchanged), verifying with API...")
+                    if await self._verify_login_via_api():
+                        utils.logger.info("[XHS] Login confirmed by API (existing session)")
+                        return True
+            except Exception:
+                pass
 
         return False
 
     async def _verify_login_via_api(self) -> bool:
         """Call XHS user/selfinfo API from browser context to confirm login.
 
-        Uses page.evaluate() to fetch the API with browser cookies.
         Cooldown: 5s between attempts to avoid rate limiting.
+
+        Strategy 1 (preferred): page.evaluate() fetch to relative URL
+        /api/sns/web/v1/user/selfinfo — same origin, no CORS. If XHS
+        proxies API through www domain, this works directly.
+
+        Strategy 2 (fallback): page.evaluate() fetch to absolute edith
+        URL with credentials: 'include'. Cross-origin, relies on XHS
+        CORS config (should be allowed for www→edith calls).
+
+        Strategy 3 (last resort): check window.__INITIAL_STATE__ for
+        user profile data that only exists when logged in.
         """
         now = time.monotonic()
         last = getattr(self, '_last_api_verify_attempt', 0)
@@ -150,6 +181,26 @@ class XiaoHongShuLogin(AbstractLogin):
             return False
         self._last_api_verify_attempt = now
 
+        # Strategy 1: relative URL (same origin, no CORS)
+        try:
+            result = await self.context_page.evaluate("""
+                async () => {
+                    try {
+                        const resp = await fetch('/api/sns/web/v1/user/selfinfo');
+                        if (!resp.ok) return null;  // 404/other = try next strategy
+                        const data = await resp.json();
+                        return data && data.data && data.data.result && data.data.result.success === true;
+                    } catch(e) {
+                        return null;  // network error = try next strategy
+                    }
+                }
+            """)
+            if result is not None:
+                return bool(result)
+        except Exception:
+            pass
+
+        # Strategy 2: absolute URL with credentials (cross-origin, relies on CORS)
         api_host = "https://webapi.rednote.com" if config.XHS_INTERNATIONAL else "https://edith.xiaohongshu.com"
         try:
             result = await self.context_page.evaluate(f"""
@@ -158,17 +209,40 @@ class XiaoHongShuLogin(AbstractLogin):
                         const resp = await fetch('{api_host}/api/sns/web/v1/user/selfinfo', {{
                             credentials: 'include'
                         }});
-                        if (!resp.ok) return false;
+                        if (!resp.ok) return null;
                         const data = await resp.json();
                         return data && data.data && data.data.result && data.data.result.success === true;
                     }} catch(e) {{
-                        return false;
+                        return null;
                     }}
                 }}
             """)
-            return bool(result)
+            if result is not None:
+                return bool(result)
         except Exception:
-            return False
+            pass
+
+        # Strategy 3: check page __INITIAL_STATE__ for user data
+        try:
+            result = await self.context_page.evaluate("""
+                () => {
+                    try {
+                        const state = window.__INITIAL_STATE__;
+                        if (!state) return false;
+                        const user = state.user || state.profile || {};
+                        return !!(user && (user.id || user.userId || user.nickname));
+                    } catch(e) {
+                        return false;
+                    }
+                }
+            """)
+            if result:
+                utils.logger.info("[XHS] Login confirmed via __INITIAL_STATE__ user data")
+                return True
+        except Exception:
+            pass
+
+        return False
 
     async def begin(self):
         """Start login xiaohongshu"""
