@@ -61,7 +61,7 @@ class KuaishouLogin(AbstractLogin):
     @retry(stop=stop_after_attempt(180), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, login_page_url: str = "") -> bool:
         """
-        Verify login status: active page refresh + URL redirect + cookie check.
+        Verify login status: active page refresh + URL redirect + QR gone + cookie + user elements.
         """
         self._qr_check_count = getattr(self, '_qr_check_count', 0) + 1
         cnt = self._qr_check_count
@@ -79,6 +79,35 @@ class KuaishouLogin(AbstractLogin):
             if current_url != login_page_url and "login" not in current_url.lower():
                 utils.logger.info("[Kuaishou] Login confirmed by URL redirect")
                 return True
+
+        # QR code / login dialog disappeared → verify
+        try:
+            qrcode_gone = not await self.context_page.is_visible(
+                "//div[@class='qrcode-img']//img", timeout=300
+            )
+            login_btn_gone = not await self.context_page.is_visible(
+                "xpath=//p[text()='登录']", timeout=300
+            )
+            if qrcode_gone or login_btn_gone:
+                utils.logger.info("[Kuaishou] QR/login button gone, checking signals...")
+                ck = await self.browser_context.cookies()
+                _, cd = utils.convert_cookies(ck)
+                if cd.get("passToken"):
+                    utils.logger.info("[Kuaishou] Login confirmed by passToken cookie")
+                    return True
+                user_selectors = [
+                    "xpath=//div[contains(@class, 'user-info')]",
+                    "xpath=//img[contains(@class, 'avatar')]",
+                ]
+                for sel in user_selectors:
+                    try:
+                        if await self.context_page.is_visible(sel, timeout=200):
+                            utils.logger.info("[Kuaishou] Login confirmed by user element + QR gone")
+                            return True
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
@@ -114,7 +143,7 @@ class KuaishouLogin(AbstractLogin):
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
         asyncio.get_running_loop().run_in_executor(executor=None, func=partial_show_qrcode)
 
-        utils.logger.info(f"[KuaishouLogin.login_by_qrcode] waiting for scan code login, remaining time is 20s")
+        utils.logger.info(f"[KuaishouLogin.login_by_qrcode] waiting for scan code login, remaining time is 180s")
         try:
             await self.check_login_state(login_page_url)
         except RetryError:

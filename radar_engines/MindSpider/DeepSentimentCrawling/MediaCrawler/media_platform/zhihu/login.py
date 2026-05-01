@@ -75,7 +75,26 @@ class ZhiHuLogin(AbstractLogin):
                 "canvas.Qrcode-qrcode", timeout=300
             )
             if canvas_gone:
-                utils.logger.info("[Zhihu] QR canvas disappeared, checking cookies...")
+                utils.logger.info("[Zhihu] QR canvas disappeared, checking signals...")
+                ck = await self.browser_context.cookies()
+                _, cd = utils.convert_cookies(ck)
+                if cd.get("z_c0"):
+                    utils.logger.info("[Zhihu] Login confirmed by z_c0 cookie")
+                    return True
+                user_selectors = [
+                    "xpath=//div[contains(@class, 'AppHeader-profile')]",
+                    "xpath=//button[contains(@class, 'AppHeader-login')]",
+                ]
+                # If login button is GONE → logged in
+                try:
+                    login_btn_gone = not await self.context_page.is_visible(
+                        "xpath=//button[contains(@class, 'AppHeader-login')]", timeout=300
+                    )
+                    if login_btn_gone:
+                        utils.logger.info("[Zhihu] Login confirmed by login button gone + QR gone")
+                        return True
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -123,7 +142,7 @@ class ZhiHuLogin(AbstractLogin):
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
         asyncio.get_running_loop().run_in_executor(executor=None, func=partial_show_qrcode)
 
-        utils.logger.info(f"[ZhiHu.login_by_qrcode] waiting for scan code login, remaining time is 120s")
+        utils.logger.info(f"[ZhiHu.login_by_qrcode] waiting for scan code login, remaining time is 180s")
         try:
             await self.check_login_state(login_page_url)
 

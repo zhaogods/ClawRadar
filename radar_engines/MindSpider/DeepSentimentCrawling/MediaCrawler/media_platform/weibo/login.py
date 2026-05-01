@@ -94,7 +94,28 @@ class WeiboLogin(AbstractLogin):
                 "xpath=//img[@class='w-full h-full']", timeout=300
             )
             if qrcode_gone:
-                utils.logger.info("[Weibo] QR code disappeared, checking cookies...")
+                utils.logger.info("[Weibo] QR code disappeared, checking signals...")
+                # QR gone → check cookies immediately (strong signal)
+                ck = await self.browser_context.cookies()
+                _, cd = utils.convert_cookies(ck)
+                if cd.get("SSOLoginState"):
+                    utils.logger.info("[Weibo] Login confirmed by SSOLoginState cookie")
+                    return True
+                if cd.get("WBPSESS") and cd.get("WBPSESS") != no_logged_in_session:
+                    utils.logger.info("[Weibo] Login confirmed by WBPSESS change")
+                    return True
+                # Check user elements on refreshed page
+                user_selectors = [
+                    "xpath=//div[contains(@class, 'woo-box')]",
+                    "xpath=//span[contains(@class, 'Frame_name')]",
+                ]
+                for sel in user_selectors:
+                    try:
+                        if await self.context_page.is_visible(sel, timeout=200):
+                            utils.logger.info("[Weibo] Login confirmed by user element + QR gone")
+                            return True
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -130,7 +151,7 @@ class WeiboLogin(AbstractLogin):
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
         asyncio.get_running_loop().run_in_executor(executor=None, func=partial_show_qrcode)
 
-        utils.logger.info(f"[WeiboLogin.login_by_qrcode] Waiting for scan code login, remaining time is 20s")
+        utils.logger.info(f"[WeiboLogin.login_by_qrcode] Waiting for scan code login, remaining time is 180s")
 
         # get not logged session
         current_cookie = await self.browser_context.cookies()

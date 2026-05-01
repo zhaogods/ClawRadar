@@ -91,7 +91,24 @@ class BilibiliLogin(AbstractLogin):
                 "//div[@class='login-scan-box']//img", timeout=300
             )
             if qrcode_gone:
-                utils.logger.info("[Bilibili] QR code disappeared, checking cookies...")
+                utils.logger.info("[Bilibili] QR code disappeared, checking signals...")
+                ck = await self.browser_context.cookies()
+                _, cd = utils.convert_cookies(ck)
+                if cd.get("SESSDATA", "") or cd.get("DedeUserID"):
+                    utils.logger.info("[Bilibili] Login confirmed by cookie")
+                    return True
+                user_selectors = [
+                    "xpath=//div[contains(@class, 'header-avatar')]",
+                    "xpath=//img[contains(@class, 'header-entry-mini-avatar')]",
+                    "xpath=//div[contains(@class, 'bili-mini-account')]",
+                ]
+                for sel in user_selectors:
+                    try:
+                        if await self.context_page.is_visible(sel, timeout=200):
+                            utils.logger.info("[Bilibili] Login confirmed by user element + QR gone")
+                            return True
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -129,7 +146,7 @@ class BilibiliLogin(AbstractLogin):
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
         asyncio.get_running_loop().run_in_executor(executor=None, func=partial_show_qrcode)
 
-        utils.logger.info(f"[BilibiliLogin.login_by_qrcode] Waiting for scan code login, remaining time is 20s")
+        utils.logger.info(f"[BilibiliLogin.login_by_qrcode] Waiting for scan code login, remaining time is 180s")
         try:
             await self.check_login_state(login_page_url)
         except RetryError:

@@ -50,7 +50,7 @@ class BaiduTieBaLogin(AbstractLogin):
     @retry(stop=stop_after_attempt(180), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, login_page_url: str = "") -> bool:
         """
-        Verify login status: active page refresh + URL redirect + cookie checks.
+        Verify login status: active page refresh + URL redirect + QR gone + cookie + user elements.
         """
         self._qr_check_count = getattr(self, '_qr_check_count', 0) + 1
         cnt = self._qr_check_count
@@ -68,6 +68,32 @@ class BaiduTieBaLogin(AbstractLogin):
             if current_url != login_page_url and "login" not in current_url.lower():
                 utils.logger.info("[Tieba] Login confirmed by URL redirect")
                 return True
+
+        # QR code disappeared → verify with cookies + user elements
+        try:
+            qrcode_gone = not await self.context_page.is_visible(
+                "xpath=//img[@class='tang-pass-qrcode-img']", timeout=300
+            )
+            if qrcode_gone:
+                utils.logger.info("[Tieba] QR code disappeared, checking signals...")
+                ck = await self.browser_context.cookies()
+                _, cd = utils.convert_cookies(ck)
+                if cd.get("STOKEN") or cd.get("PTOKEN"):
+                    utils.logger.info("[Tieba] Login confirmed by STOKEN/PTOKEN cookie")
+                    return True
+                user_selectors = [
+                    "xpath=//a[contains(@class, 'u_username')]",
+                    "xpath=//span[contains(@class, 'user_name')]",
+                ]
+                for sel in user_selectors:
+                    try:
+                        if await self.context_page.is_visible(sel, timeout=200):
+                            utils.logger.info("[Tieba] Login confirmed by user element + QR gone")
+                            return True
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
@@ -122,7 +148,7 @@ class BaiduTieBaLogin(AbstractLogin):
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
         asyncio.get_running_loop().run_in_executor(executor=None, func=partial_show_qrcode)
 
-        utils.logger.info(f"[BaiduTieBaLogin.login_by_qrcode] waiting for scan code login, remaining time is 120s")
+        utils.logger.info(f"[BaiduTieBaLogin.login_by_qrcode] waiting for scan code login, remaining time is 180s")
         try:
             await self.check_login_state(login_page_url)
         except RetryError:
