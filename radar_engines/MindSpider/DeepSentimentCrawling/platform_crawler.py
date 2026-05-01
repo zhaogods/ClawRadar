@@ -65,6 +65,7 @@ class PlatformCrawler:
         self.mediacrawler_path = Path(__file__).parent / "MediaCrawler"
         self.supported_platforms = ['xhs', 'dy', 'ks', 'bili', 'wb', 'tieba', 'zhihu']
         self.crawl_stats = {}
+        self._cookie_failed = False  # 任一平台 cookie 失败则后续全用 qrcode
         
         # 确保MediaCrawler子模块已初始化
         db_config_path = self.mediacrawler_path / "config" / "db_config.py"
@@ -500,9 +501,11 @@ postgres_db_config = {{
 
             return_code = result.returncode
 
-            # cookie 登录失败 → 自动回退到 qrcode
+            # cookie 登录失败 → 自动回退到 qrcode，并标记后续平台
             if return_code != 0 and effective_login_type == "cookie":
+                self._cookie_failed = True
                 logger.warning(f"[{platform}] cookie 登录失败 (rc={return_code})，自动回退到 qrcode 扫码登录...")
+                logger.warning(f"[{platform}] 后续平台将强制使用 qrcode，确保 QR 码正常显示")
                 cmd[cmd.index("--lt") + 1] = "qrcode"
                 logger.info(f"重试命令: {' '.join(cmd)}")
                 result = subprocess.run(
@@ -653,13 +656,20 @@ postgres_db_config = {{
             }
         
         # 对每个平台一次性爬取所有关键词
+        # 自适应登录：前期平台 cookie 失败 → 后续自动切换 qrcode
+        effective_login = login_type
         for platform in platforms:
+            # 某平台 cookie 失败后，后续全用 qrcode
+            if self._cookie_failed and effective_login in ("auto", "cookie"):
+                effective_login = "qrcode"
+                logger.warning(f"⚠️ 已有平台 cookie 登录失败，{platform} 强制使用 qrcode")
+
             logger.info(f"\n📝 在 {platform} 平台爬取所有关键词")
             logger.info(f"   关键词: {', '.join(keywords[:5])}{'...' if len(keywords) > 5 else ''}")
-            
+
             try:
                 # 一次性传递所有关键词给平台
-                result = self.run_crawler(platform, keywords, login_type, max_notes_per_keyword)
+                result = self.run_crawler(platform, keywords, effective_login, max_notes_per_keyword)
                 
                 if result.get("success"):
                     total_stats["successful_tasks"] += len(keywords)
