@@ -66,7 +66,7 @@ class WeiboLogin(AbstractLogin):
                 "[WeiboLogin.begin] Invalid Login Type Currently only supported qrcode or phone or cookie ...")
 
 
-    @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
+    @retry(stop=stop_after_attempt(180), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, no_logged_in_session: str, login_page_url: str = "") -> bool:
         """
         Verify login status: active page refresh + URL redirect + cookie checks.
@@ -75,8 +75,8 @@ class WeiboLogin(AbstractLogin):
         cnt = self._qr_check_count
 
         # Periodic active refresh to trigger post-login redirect
-        if cnt % 30 == 0 and cnt >= 30 and login_page_url:
-            utils.logger.info(f"[Weibo] Active refresh #{cnt // 30} — reloading page...")
+        if cnt % 20 == 0 and cnt >= 20 and login_page_url:
+            utils.logger.info(f"[Weibo] Active refresh #{cnt // 20} — reloading page...")
             try:
                 await self.context_page.goto(login_page_url, wait_until="domcontentloaded", timeout=15000)
                 await asyncio.sleep(2)

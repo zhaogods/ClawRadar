@@ -92,15 +92,15 @@ class DouYinLogin(AbstractLogin):
         utils.logger.info(f"[DouYinLogin.begin] Login successful then wait for {wait_redirect_seconds} seconds redirect ...")
         await asyncio.sleep(wait_redirect_seconds)
 
-    @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
+    @retry(stop=stop_after_attempt(180), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self):
         """Check if the current login status is successful and return True otherwise return False"""
         self._qr_check_count = getattr(self, '_qr_check_count', 0) + 1
         cnt = self._qr_check_count
 
         # Periodic active refresh to trigger post-login redirect
-        if cnt % 30 == 0 and cnt >= 30 and self._login_page_url:
-            utils.logger.info(f"[Douyin] Active refresh #{cnt // 30} — reloading page...")
+        if cnt % 20 == 0 and cnt >= 20 and self._login_page_url:
+            utils.logger.info(f"[Douyin] Active refresh #{cnt // 20} — reloading page...")
             try:
                 await self.context_page.goto(self._login_page_url, wait_until="domcontentloaded", timeout=15000)
                 await asyncio.sleep(2)

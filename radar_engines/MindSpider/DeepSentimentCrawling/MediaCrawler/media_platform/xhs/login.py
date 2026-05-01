@@ -21,6 +21,7 @@
 import asyncio
 import functools
 import sys
+import time
 from typing import Optional
 
 from playwright.async_api import BrowserContext, Page
@@ -48,13 +49,17 @@ class XiaoHongShuLogin(AbstractLogin):
         self.login_phone = login_phone
         self.cookie_str = cookie_str
 
-    @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
+    @retry(stop=stop_after_attempt(180), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, no_logged_in_session: str, login_page_url: str = "") -> bool:
         """
         Verify login status using multi-signal detection + active page refresh.
 
-        Passive checks run every 1s. After 30s, page is actively refreshed every 30s
+        Passive checks run every 1s. After 20s, page is actively refreshed every 20s
         to trigger the post-login redirect that the page's own JS polling may miss.
+
+        UI-based checks (QR gone, user elements) are NOT trusted alone —
+        after page refresh the homepage shows sidebar/Me even when logged out.
+        These checks now require API-level confirmation.
         """
         self._qr_check_count = getattr(self, '_qr_check_count', 0) + 1
         cnt = self._qr_check_count
@@ -64,8 +69,8 @@ class XiaoHongShuLogin(AbstractLogin):
         #    In Playwright + Xvfb this sometimes stalls. Periodic goto() forces
         #    a fresh navigation; if the session is authenticated server-side,
         #    the page loads without the login modal.
-        if cnt % 30 == 0 and cnt >= 30 and login_page_url:
-            utils.logger.info(f"[XHS] Active refresh #{cnt // 30} — reloading page to trigger redirect...")
+        if cnt % 20 == 0 and cnt >= 20 and login_page_url:
+            utils.logger.info(f"[XHS] Active refresh #{cnt // 20} — reloading page to trigger redirect...")
             try:
                 await self.context_page.goto(login_page_url, wait_until="domcontentloaded", timeout=15000)
                 await asyncio.sleep(2)
@@ -79,7 +84,7 @@ class XiaoHongShuLogin(AbstractLogin):
                 utils.logger.info("[XHS] Login confirmed by URL redirect")
                 return True
 
-        # 2. QR code disappearance + user content appeared
+        # 2. QR code disappearance + user content appeared → API verify
         try:
             qrcode_gone = not await self.context_page.is_visible(
                 "xpath=//img[@class='qrcode-img']", timeout=300
@@ -96,21 +101,26 @@ class XiaoHongShuLogin(AbstractLogin):
                 for sel in user_selectors:
                     try:
                         if await self.context_page.is_visible(sel, timeout=300):
-                            utils.logger.info("[XHS] Login confirmed by QR gone + user element visible")
-                            return True
+                            utils.logger.info("[XHS] QR gone + user element visible, verifying with API...")
+                            if await self._verify_login_via_api():
+                                utils.logger.info("[XHS] Login confirmed by API (QR gone + user element)")
+                                return True
+                            utils.logger.info("[XHS] UI signals were false positive, API denied")
                     except Exception:
                         pass
-                utils.logger.info("[XHS] Login dialog closed, waiting for user elements...")
         except Exception:
             pass
 
-        # 3. UI element check — "Me" button in sidebar
+        # 3. UI element check — "Me" button → API verify
         try:
             user_profile_selector = "xpath=//a[contains(@href, '/user/profile/')]//span[text()='我']"
             is_visible = await self.context_page.is_visible(user_profile_selector, timeout=500)
             if is_visible:
-                utils.logger.info("[XHS] Login confirmed by UI element ('Me' button)")
-                return True
+                utils.logger.info("[XHS] UI element ('Me' button) visible, verifying with API...")
+                if await self._verify_login_via_api():
+                    utils.logger.info("[XHS] Login confirmed by API ('Me' button)")
+                    return True
+                utils.logger.info("[XHS] UI element was false positive, API denied")
         except Exception:
             pass
 
@@ -118,7 +128,7 @@ class XiaoHongShuLogin(AbstractLogin):
         if "请通过验证" in await self.context_page.content():
             utils.logger.info("[XHS] CAPTCHA appeared, please verify manually")
 
-        # 5. Cookie-based change detection
+        # 5. Cookie-based change detection (trusted — cookie changes only on real login)
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
         current_web_session = cookie_dict.get("web_session")
@@ -127,6 +137,38 @@ class XiaoHongShuLogin(AbstractLogin):
             return True
 
         return False
+
+    async def _verify_login_via_api(self) -> bool:
+        """Call XHS user/selfinfo API from browser context to confirm login.
+
+        Uses page.evaluate() to fetch the API with browser cookies.
+        Cooldown: 5s between attempts to avoid rate limiting.
+        """
+        now = time.monotonic()
+        last = getattr(self, '_last_api_verify_attempt', 0)
+        if now - last < 5:
+            return False
+        self._last_api_verify_attempt = now
+
+        api_host = "https://webapi.rednote.com" if config.XHS_INTERNATIONAL else "https://edith.xiaohongshu.com"
+        try:
+            result = await self.context_page.evaluate(f"""
+                async () => {{
+                    try {{
+                        const resp = await fetch('{api_host}/api/sns/web/v1/user/selfinfo', {{
+                            credentials: 'include'
+                        }});
+                        if (!resp.ok) return false;
+                        const data = await resp.json();
+                        return data && data.data && data.data.result && data.data.result.success === true;
+                    }} catch(e) {{
+                        return false;
+                    }}
+                }}
+            """)
+            return bool(result)
+        except Exception:
+            return False
 
     async def begin(self):
         """Start login xiaohongshu"""
@@ -243,7 +285,7 @@ class XiaoHongShuLogin(AbstractLogin):
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
         asyncio.get_running_loop().run_in_executor(executor=None, func=partial_show_qrcode)
 
-        utils.logger.info(f"[XiaoHongShuLogin.login_by_qrcode] waiting for scan code login, remaining time is 120s")
+        utils.logger.info(f"[XiaoHongShuLogin.login_by_qrcode] waiting for scan code login, remaining time is 180s")
         try:
             await self.check_login_state(no_logged_in_session, login_page_url)
         except RetryError:
