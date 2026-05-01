@@ -24,12 +24,21 @@
 # @Desc    : Crawler utility functions
 
 import base64
+import http.server
 import json
+import os as _os_module
 import random
 import re
+import secrets
+import socketserver
+import string
+import sys as _sys
+import threading
 import urllib
 import urllib.parse
+import urllib.request
 from io import BytesIO
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, cast
 
 import httpx
@@ -85,9 +94,161 @@ async def find_qrcode_img_from_canvas(page: Page, canvas_selector: str) -> str:
     return base64_image
 
 
+# ---- QR Code HTTP server (singleton per process) ----
+
+_QRCODE_SERVER_STARTED = False
+_QRCODE_SERVER_LOCK = threading.Lock()
+
+
+def _read_env_value(key: str, default: str = "") -> str:
+    """Read value from environment or walk-up .env files (no dotenv dependency)."""
+    val = _os_module.environ.get(key, "")
+    if val:
+        return val
+    cwd = Path.cwd()
+    for parent in [cwd] + list(cwd.parents):
+        env_file = parent / ".env"
+        if env_file.exists():
+            try:
+                for line in env_file.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    if k.strip() == key:
+                        return v.strip().strip('"').strip("'")
+            except Exception:
+                pass
+    return default
+
+
+def _resolve_qrcode_http_token() -> str:
+    """Resolve QR code HTTP auth token.
+
+    Priority: env QRCODE_HTTP_TOKEN > .env QRCODE_HTTP_TOKEN > random 7-char.
+    """
+    token = _read_env_value("QRCODE_HTTP_TOKEN")
+    if token:
+        return token
+    return "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(7))
+
+
+def _extract_platform_name() -> str:
+    """Extract platform name from subprocess command line."""
+    try:
+        argv = _sys.argv
+        if "--platform" in argv:
+            idx = argv.index("--platform")
+            if idx + 1 < len(argv):
+                return argv[idx + 1]
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _send_pushplus_notification(platform: str, url: str) -> None:
+    """Send QR code login link via PushPlus notification (best-effort)."""
+    pushplus_token = (
+        _os_module.environ.get("PUSHPLUS_TOKEN", "").strip()
+        or _read_env_value("PUSHPLUS_TOKEN")
+    )
+    if not pushplus_token:
+        return
+    try:
+        data = json.dumps({
+            "token": pushplus_token,
+            "title": f"ClawRadar - {platform} 需要扫码登录",
+            "content": f"## {platform} 平台需要扫码登录\n\n"
+                       f"请打开以下地址查看二维码并扫码：\n\n"
+                       f"**{url}**\n\n"
+                       f"[点击打开二维码]({url})",
+            "template": "markdown",
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://www.pushplus.plus/send",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=10)
+        print(f"[QRCode] PushPlus 通知已发送")
+    except Exception as e:
+        print(f"[QRCode] PushPlus 通知发送失败: {e}")
+
+
+class _QRCodeHandler(http.server.BaseHTTPRequestHandler):
+    """Serve qrcode_login.png with token-in-path auth."""
+
+    def do_GET(self):
+        expected = f"/{self.server.token}/qrcode_login.png"
+        if self.path == expected:
+            try:
+                with open(self.server.png_path, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            except FileNotFoundError:
+                self.send_error(404, "QR code image not found")
+        else:
+            self.send_error(404, "Not found")
+
+    def log_message(self, format, *args):
+        pass  # suppress access logs
+
+
+class _QRCodeServerRef:
+    port = 0
+    token = ""
+
+
+_QRCODE_SERVER = _QRCodeServerRef()
+
+
+def _start_qrcode_http_server(png_path: str) -> str:
+    """Start a background HTTP server to serve the QR code PNG.
+
+    Returns the public URL (with token).
+    """
+    global _QRCODE_SERVER_STARTED
+    with _QRCODE_SERVER_LOCK:
+        if _QRCODE_SERVER_STARTED:
+            pass
+        else:
+            token = _resolve_qrcode_http_token()
+            port = int(_read_env_value("QRCODE_HTTP_PORT", "8888"))
+
+            for offset in range(10):
+                try:
+                    server = socketserver.TCPServer(
+                        ("0.0.0.0", port + offset),
+                        _QRCodeHandler,
+                    )
+                    server.token = token
+                    server.png_path = png_path
+                    break
+                except OSError:
+                    pass
+            else:
+                print(f"[QRCode] HTTP server: all ports {port}-{port + 9} in use, skip")
+                return ""
+
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            _QRCODE_SERVER_STARTED = True
+            _QRCODE_SERVER.port = server.server_address[1]
+            _QRCODE_SERVER.token = token
+
+    host = _read_env_value("QRCODE_HTTP_HOST", "")
+    if not host:
+        host = "127.0.0.1"
+    final_url = f"http://{host}:{_QRCODE_SERVER.port}/{_QRCODE_SERVER.token}/qrcode_login.png"
+    return final_url
+
+
 def show_qrcode(qr_code) -> None:  # type: ignore
-    """parse base64 encode qrcode image and show it via zbarimg + qrencode"""
-    import os as _os
+    """Parse base64 QR code image and display it via zbarimg + qrencode + HTTP server."""
     import shutil
     import subprocess
 
@@ -104,15 +265,21 @@ def show_qrcode(qr_code) -> None:  # type: ignore
     draw.rectangle((0, 0, width + 19, height + 19), outline=(0, 0, 0), width=1)
 
     # Save PNG file
-    qr_png_path = _os.path.join(_os.getcwd(), "qrcode_login.png")
+    qr_png_path = str(Path.cwd() / "qrcode_login.png")
     new_image.save(qr_png_path, "PNG")
     print(f"\n[QRCode] QR code image saved to: {qr_png_path}")
-    print(f"[QRCode] Download via scp or view via python3 -m http.server 8080\n")
+
+    # HTTP server with token auth — start once per process
+    http_url = _start_qrcode_http_server(qr_png_path)
+    if http_url:
+        print(f"[QRCode] HTTP 扫码地址: {http_url}")
+        platform = _extract_platform_name()
+        _send_pushplus_notification(platform, http_url)
 
     # Check zbarimg / qrencode availability
     if not shutil.which("zbarimg") or not shutil.which("qrencode"):
         print("[QRCode] zbarimg / qrencode not installed! Run: sudo apt install zbar-tools qrencode")
-        print("[QRCode] Use the saved qrcode_login.png file instead\n")
+        print("[QRCode] Use the HTTP address above or saved file\n")
         return
 
     # zbarimg decode QR → qrencode re-encode for high-precision terminal display
@@ -122,7 +289,7 @@ def show_qrcode(qr_code) -> None:  # type: ignore
     )
     qr_data = result.stdout.strip()
     if not qr_data or result.returncode != 0:
-        print(f"[QRCode] zbarimg decode failed (rc={result.returncode}), use saved qrcode_login.png")
+        print(f"[QRCode] zbarimg decode failed (rc={result.returncode}), use HTTP address above")
         if result.stderr:
             print(f"[QRCode] stderr: {result.stderr.strip()}")
         return
@@ -132,7 +299,7 @@ def show_qrcode(qr_code) -> None:  # type: ignore
         capture_output=True, text=True, timeout=10,
     )
     if result.returncode != 0 or not result.stdout.strip():
-        print(f"[QRCode] qrencode generation failed (rc={result.returncode}), use saved qrcode_login.png")
+        print(f"[QRCode] qrencode generation failed (rc={result.returncode}), use HTTP address above")
         if result.stderr:
             print(f"[QRCode] stderr: {result.stderr.strip()}")
         return
