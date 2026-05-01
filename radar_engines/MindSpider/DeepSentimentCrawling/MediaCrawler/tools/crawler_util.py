@@ -33,7 +33,7 @@ from io import BytesIO
 from typing import Dict, List, Optional, Tuple, cast
 
 import httpx
-from PIL import Image, ImageDraw, ImageShow
+from PIL import Image, ImageDraw
 from playwright.async_api import BrowserContext, Cookie, Page
 
 from . import utils
@@ -86,71 +86,59 @@ async def find_qrcode_img_from_canvas(page: Page, canvas_selector: str) -> str:
 
 
 def show_qrcode(qr_code) -> None:  # type: ignore
-    """parse base64 encode qrcode image and show it"""
+    """parse base64 encode qrcode image and show it via zbarimg + qrencode"""
     import os as _os
+    import shutil
+    import subprocess
 
     if "," in qr_code:
         qr_code = qr_code.split(",")[1]
     qr_code = base64.b64decode(qr_code)
     image = Image.open(BytesIO(qr_code))
 
-    # Add a square border around the QR code and display it within the border to improve scanning accuracy.
+    # Add a square border around the QR code to improve scanning accuracy.
     width, height = image.size
     new_image = Image.new('RGB', (width + 20, height + 20), color=(255, 255, 255))
     new_image.paste(image, (10, 10))
     draw = ImageDraw.Draw(new_image)
     draw.rectangle((0, 0, width + 19, height + 19), outline=(0, 0, 0), width=1)
 
-    # 1) 保存 PNG 文件（最可靠）
+    # Save PNG file
     qr_png_path = _os.path.join(_os.getcwd(), "qrcode_login.png")
     new_image.save(qr_png_path, "PNG")
-    print(f"\n[QRCode] QR 码图片已保存至: {qr_png_path}")
-    print(f"[QRCode] 用 scp 下载或 python3 -m http.server 8080 后在浏览器查看\n")
+    print(f"\n[QRCode] QR code image saved to: {qr_png_path}")
+    print(f"[QRCode] Download via scp or view via python3 -m http.server 8080\n")
 
-    # 2) 终端 Unicode 半块字符渲染（双倍垂直精度）
-    _print_qrcode_to_terminal(new_image)
+    # Check zbarimg / qrencode availability
+    if not shutil.which("zbarimg") or not shutil.which("qrencode"):
+        print("[QRCode] zbarimg / qrencode not installed! Run: sudo apt install zbar-tools qrencode")
+        print("[QRCode] Use the saved qrcode_login.png file instead\n")
+        return
 
-    # 3) 备用：系统图片查看器（有 GUI 时可用）
-    try:
-        del ImageShow.UnixViewer.options["save_all"]
-        new_image.show()
-    except Exception:
-        pass
+    # zbarimg decode QR → qrencode re-encode for high-precision terminal display
+    result = subprocess.run(
+        ["zbarimg", "--quiet", "--raw", qr_png_path],
+        capture_output=True, text=True, timeout=10,
+    )
+    qr_data = result.stdout.strip()
+    if not qr_data or result.returncode != 0:
+        print(f"[QRCode] zbarimg decode failed (rc={result.returncode}), use saved qrcode_login.png")
+        if result.stderr:
+            print(f"[QRCode] stderr: {result.stderr.strip()}")
+        return
 
+    result = subprocess.run(
+        ["qrencode", "-t", "utf8", "-s", "3", "-m", "2", "-l", "H", qr_data],
+        capture_output=True, text=True, timeout=10,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        print(f"[QRCode] qrencode generation failed (rc={result.returncode}), use saved qrcode_login.png")
+        if result.stderr:
+            print(f"[QRCode] stderr: {result.stderr.strip()}")
+        return
 
-def _print_qrcode_to_terminal(image) -> None:
-    """将 QR 码图像转为终端 Unicode 半块字符输出。
-
-    使用 ▀（上半块）和空格组合实现 2 倍垂直分辨率，
-    每个终端字符行渲染两个像素行，提高扫码成功率。
-    """
-    gray = image.convert("L")
-    # 宽度 80 字符，半块技术使垂直信息量翻倍
-    target_width = 80
-    pixel_aspect = 0.5  # 终端字符宽高比（高约宽 2 倍）
-    target_height = int(target_width * (gray.height / gray.width) * pixel_aspect)
-    # 确保高度为偶数（两行一组）
-    target_height = max(target_height // 2 * 2, 2)
-    gray = gray.resize((target_width, target_height), Image.LANCZOS)
-
-    pixels = gray.load()
-    lines = ["", "[QRCode] 请用手机扫描下方二维码完成登录（或打开保存的 qrcode_login.png）:", ""]
-    for y in range(0, target_height, 2):
-        chars = []
-        for x in range(target_width):
-            upper = pixels[x, y] < 128       # 上半像素深 → 显示 ▀
-            lower = pixels[x, y + 1] < 128 if y + 1 < target_height else False  # 下半像素深 → 显示 ▄
-            if upper and lower:
-                chars.append("█")   # 上下都深 → 全块
-            elif upper:
-                chars.append("▀")   # 上深下浅 → 上半块
-            elif lower:
-                chars.append("▄")   # 上浅下深 → 下半块
-            else:
-                chars.append(" ")   # 都浅 → 空格
-        lines.append("".join(chars))
-    lines.append("")
-    print("\n".join(lines), flush=True)
+    print("\n[QRCode] Please scan the QR code below with your phone:\n")
+    print(result.stdout)
 
 
 def get_user_agent() -> str:
@@ -245,16 +233,16 @@ def format_proxy_info(ip_proxy_info) -> Tuple[Optional[Dict], Optional[str]]:
 
     # Playwright proxy server should be in format "host:port" without protocol prefix
     server = f"{ip_proxy_info.ip}:{ip_proxy_info.port}"
-    
+
     playwright_proxy = {
         "server": server,
     }
-    
+
     # Only add username and password if they are not empty
     if ip_proxy_info.user and ip_proxy_info.password:
         playwright_proxy["username"] = ip_proxy_info.user
         playwright_proxy["password"] = ip_proxy_info.password
-    
+
     # httpx 0.28.1 requires passing proxy URL string directly, not a dictionary
     if ip_proxy_info.user and ip_proxy_info.password:
         httpx_proxy = f"http://{ip_proxy_info.user}:{ip_proxy_info.password}@{ip_proxy_info.ip}:{ip_proxy_info.port}"
