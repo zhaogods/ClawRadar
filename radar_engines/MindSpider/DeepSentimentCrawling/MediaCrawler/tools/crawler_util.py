@@ -87,6 +87,8 @@ async def find_qrcode_img_from_canvas(page: Page, canvas_selector: str) -> str:
 
 def show_qrcode(qr_code) -> None:  # type: ignore
     """parse base64 encode qrcode image and show it"""
+    import os as _os
+
     if "," in qr_code:
         qr_code = qr_code.split(",")[1]
     qr_code = base64.b64decode(qr_code)
@@ -99,10 +101,16 @@ def show_qrcode(qr_code) -> None:  # type: ignore
     draw = ImageDraw.Draw(new_image)
     draw.rectangle((0, 0, width + 19, height + 19), outline=(0, 0, 0), width=1)
 
-    # 主方案：终端 Unicode 块字符渲染（有/无 GUI 都能用）
+    # 1) 保存 PNG 文件（最可靠）
+    qr_png_path = _os.path.join(_os.getcwd(), "qrcode_login.png")
+    new_image.save(qr_png_path, "PNG")
+    print(f"\n[QRCode] QR 码图片已保存至: {qr_png_path}")
+    print(f"[QRCode] 用 scp 下载或 python3 -m http.server 8080 后在浏览器查看\n")
+
+    # 2) 终端 Unicode 半块字符渲染（双倍垂直精度）
     _print_qrcode_to_terminal(new_image)
 
-    # 备用：系统图片查看器（有 GUI 时可用）
+    # 3) 备用：系统图片查看器（有 GUI 时可用）
     try:
         del ImageShow.UnixViewer.options["save_all"]
         new_image.show()
@@ -111,18 +119,36 @@ def show_qrcode(qr_code) -> None:  # type: ignore
 
 
 def _print_qrcode_to_terminal(image) -> None:
-    """将 QR 码图像转为终端 Unicode 块字符输出，手机可直接扫码。"""
+    """将 QR 码图像转为终端 Unicode 半块字符输出。
+
+    使用 ▀（上半块）和空格组合实现 2 倍垂直分辨率，
+    每个终端字符行渲染两个像素行，提高扫码成功率。
+    """
     gray = image.convert("L")
-    target_width = 66
-    aspect = gray.height / gray.width
-    target_height = int(target_width * aspect * 0.5)
-    gray = gray.resize((target_width, max(target_height, 1)), Image.LANCZOS)
+    # 宽度 80 字符，半块技术使垂直信息量翻倍
+    target_width = 80
+    pixel_aspect = 0.5  # 终端字符宽高比（高约宽 2 倍）
+    target_height = int(target_width * (gray.height / gray.width) * pixel_aspect)
+    # 确保高度为偶数（两行一组）
+    target_height = max(target_height // 2 * 2, 2)
+    gray = gray.resize((target_width, target_height), Image.LANCZOS)
 
     pixels = gray.load()
-    lines = ["", "[QRCode] 请用手机扫描下方二维码完成登录:", ""]
-    for y in range(target_height):
-        line = "".join("█" if pixels[x, y] < 128 else " " for x in range(target_width))
-        lines.append(line)
+    lines = ["", "[QRCode] 请用手机扫描下方二维码完成登录（或打开保存的 qrcode_login.png）:", ""]
+    for y in range(0, target_height, 2):
+        chars = []
+        for x in range(target_width):
+            upper = pixels[x, y] < 128       # 上半像素深 → 显示 ▀
+            lower = pixels[x, y + 1] < 128 if y + 1 < target_height else False  # 下半像素深 → 显示 ▄
+            if upper and lower:
+                chars.append("█")   # 上下都深 → 全块
+            elif upper:
+                chars.append("▀")   # 上深下浅 → 上半块
+            elif lower:
+                chars.append("▄")   # 上浅下深 → 下半块
+            else:
+                chars.append(" ")   # 都浅 → 空格
+        lines.append("".join(chars))
     lines.append("")
     print("\n".join(lines), flush=True)
 
