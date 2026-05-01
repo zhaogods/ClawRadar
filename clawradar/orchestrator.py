@@ -2324,6 +2324,12 @@ def topic_radar_orchestrate(
             try:
                 from clawradar.real_source import _run_deep_sentiment_crawling
 
+                _logger.info(
+                    f"deep_crawl config: platforms={entry_resolution['deep_crawl']['platforms']}"
+                    f" server_mode={entry_resolution['deep_crawl']['server_mode']}"
+                    f" login_type={entry_resolution['deep_crawl']['login_type']}"
+                )
+
                 deep_crawl_result = _run_deep_sentiment_crawling(
                     platforms=entry_resolution["deep_crawl"]["platforms"],
                     max_keywords=entry_resolution["deep_crawl"]["max_keywords"],
