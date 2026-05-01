@@ -146,11 +146,44 @@ class DouYinLogin(AbstractLogin):
 
     async def login_by_qrcode(self):
         utils.logger.info("[DouYinLogin.login_by_qrcode] Begin login douyin by qrcode...")
-        qrcode_img_selector = "xpath=//div[@id='animate_qrcode_container']//img"
-        base64_qrcode_img = await utils.find_login_qrcode(
-            self.context_page,
-            selector=qrcode_img_selector
-        )
+
+        # Switch to QR code tab — login dialog defaults to phone login
+        qr_tab_selectors = [
+            "xpath=//li[contains(text(), '扫码')]",
+            "xpath=//span[contains(text(), '扫码')]",
+            "xpath=//div[contains(@class, 'qrcode')]//..",
+        ]
+        qr_tab_found = False
+        for sel in qr_tab_selectors:
+            try:
+                tab_ele = self.context_page.locator(sel)
+                if await tab_ele.is_visible(timeout=2000):
+                    await tab_ele.click()
+                    await asyncio.sleep(1)
+                    utils.logger.info(f"[DouYinLogin.login_by_qrcode] Switched to QR tab via: {sel}")
+                    qr_tab_found = True
+                    break
+            except Exception:
+                continue
+
+        if not qr_tab_found:
+            utils.logger.info("[DouYinLogin.login_by_qrcode] QR tab not found, trying direct QR detection...")
+
+        # Find login qrcode — try multiple selectors
+        qrcode_img_selectors = [
+            "xpath=//div[@id='animate_qrcode_container']//img",
+            "xpath=//div[contains(@class, 'qrcode')]//img",
+            "xpath=//canvas[contains(@class, 'qrcode')]",
+        ]
+        base64_qrcode_img = ""
+        for sel in qrcode_img_selectors:
+            base64_qrcode_img = await utils.find_login_qrcode(
+                self.context_page,
+                selector=sel
+            )
+            if base64_qrcode_img:
+                break
+
         if not base64_qrcode_img:
             utils.logger.info("[DouYinLogin.login_by_qrcode] login qrcode not found please confirm ...")
             sys.exit(42)
