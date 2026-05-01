@@ -133,14 +133,19 @@ class PlatformCrawler:
                 "  CentOS/RHEL:   sudo yum install xorg-x11-server-Xvfb"
             )
 
-        # 检查是否已有 Xvfb 在 :99 运行
-        check = subprocess.run(
-            ["xdpyinfo", "-display", self._xvfb_display],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-        if check.returncode == 0:
-            logger.info(f"复用已有 Xvfb {self._xvfb_display}")
-            return
+        # 检查是否已有 Xvfb 在 :99 运行（通过锁文件）
+        lock_file = f"/tmp/.X99-lock"
+        if os.path.exists(lock_file):
+            logger.info(f"Xvfb {self._xvfb_display} 锁文件已存在，尝试复用")
+            # 验证锁文件中的进程是否还活着
+            try:
+                with open(lock_file, "r") as f:
+                    pid = int(f.read().strip())
+                os.kill(pid, 0)  # 发送信号0检测进程是否存在
+                logger.info(f"复用已有 Xvfb {self._xvfb_display} (pid {pid})")
+                return
+            except (OSError, ValueError):
+                logger.info("锁文件存在但进程已死，重新启动")
 
         logger.info(f"启动 Xvfb {self._xvfb_display} ...")
         self._xvfb_process = subprocess.Popen(
