@@ -111,6 +111,12 @@ class BaiduTieBaLogin(AbstractLogin):
             await self.login_by_mobile()
         elif config.LOGIN_TYPE == "cookie":
             await self.login_by_cookies()
+            await asyncio.sleep(1)
+            ck = await self.browser_context.cookies()
+            _, cd = utils.convert_cookies(ck)
+            if not cd.get("STOKEN") and not cd.get("PTOKEN"):
+                utils.logger.info("[BaiduTieBaLogin.begin] cookie login failed - no STOKEN/PTOKEN found")
+                sys.exit(42)
         else:
             raise ValueError("[BaiduTieBaLogin.begin]Invalid Login Type Currently only supported qrcode or phone or cookies ...")
 

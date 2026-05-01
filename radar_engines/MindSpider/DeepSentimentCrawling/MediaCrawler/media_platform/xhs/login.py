@@ -253,6 +253,12 @@ class XiaoHongShuLogin(AbstractLogin):
             await self.login_by_mobile()
         elif config.LOGIN_TYPE == "cookie":
             await self.login_by_cookies()
+            await asyncio.sleep(1)
+            ck = await self.browser_context.cookies()
+            _, cd = utils.convert_cookies(ck)
+            if not cd.get("web_session"):
+                utils.logger.info("[XiaoHongShuLogin.begin] cookie login failed - no web_session found")
+                sys.exit(42)
         else:
             raise ValueError("[XiaoHongShuLogin.begin]I nvalid Login Type Currently only supported qrcode or phone or cookies ...")
 

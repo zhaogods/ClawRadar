@@ -60,6 +60,12 @@ class BilibiliLogin(AbstractLogin):
             await self.login_by_mobile()
         elif config.LOGIN_TYPE == "cookie":
             await self.login_by_cookies()
+            await asyncio.sleep(1)
+            ck = await self.browser_context.cookies()
+            _, cd = utils.convert_cookies(ck)
+            if not cd.get("SESSDATA", "") and not cd.get("DedeUserID"):
+                utils.logger.info("[BilibiliLogin.begin] cookie login failed - no SESSDATA/DedeUserID found")
+                sys.exit(42)
         else:
             raise ValueError(
                 "[BilibiliLogin.begin] Invalid Login Type Currently only supported qrcode or phone or cookie ...")

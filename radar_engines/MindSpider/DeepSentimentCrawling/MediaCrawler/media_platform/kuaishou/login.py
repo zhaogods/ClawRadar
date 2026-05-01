@@ -47,7 +47,7 @@ class KuaishouLogin(AbstractLogin):
         self.cookie_str = cookie_str
 
     async def begin(self):
-        """Start login xiaohongshu"""
+        """Start login kuaishou"""
         utils.logger.info("[KuaishouLogin.begin] Begin login kuaishou ...")
         if config.LOGIN_TYPE == "qrcode":
             await self.login_by_qrcode()
@@ -55,6 +55,12 @@ class KuaishouLogin(AbstractLogin):
             await self.login_by_mobile()
         elif config.LOGIN_TYPE == "cookie":
             await self.login_by_cookies()
+            await asyncio.sleep(1)
+            ck = await self.browser_context.cookies()
+            _, cd = utils.convert_cookies(ck)
+            if not cd.get("passToken"):
+                utils.logger.info("[KuaishouLogin.begin] cookie login failed - no passToken found")
+                sys.exit(42)
         else:
             raise ValueError("[KuaishouLogin.begin] Invalid Login Type Currently only supported qrcode or phone or cookie ...")
 

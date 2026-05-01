@@ -114,6 +114,12 @@ class ZhiHuLogin(AbstractLogin):
             await self.login_by_mobile()
         elif config.LOGIN_TYPE == "cookie":
             await self.login_by_cookies()
+            await asyncio.sleep(1)
+            ck = await self.browser_context.cookies()
+            _, cd = utils.convert_cookies(ck)
+            if not cd.get("z_c0"):
+                utils.logger.info("[ZhiHu.begin] cookie login failed - no z_c0 found")
+                sys.exit(42)
         else:
             raise ValueError("[ZhiHu.begin]I nvalid Login Type Currently only supported qrcode or phone or cookies ...")
 
