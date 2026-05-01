@@ -145,21 +145,43 @@ class KuaishouLogin(AbstractLogin):
         """login kuaishou website and keep webdriver login state"""
         utils.logger.info("[KuaishouLogin.login_by_qrcode] Begin login kuaishou by qrcode ...")
 
-        # click login button
-        login_button_ele = self.context_page.locator(
-            "xpath=//p[text()='登录']"
-        )
-        await login_button_ele.click()
-
-        # find login qrcode
+        # If the QR dialog is already visible, do not click the login entry again.
         qrcode_img_selector = "//div[@class='qrcode-img']//img"
         base64_qrcode_img = await utils.find_login_qrcode(
             self.context_page,
             selector=qrcode_img_selector
         )
         if not base64_qrcode_img:
-            utils.logger.info("[KuaishouLogin.login_by_qrcode] login failed , have not found qrcode please check ....")
-            sys.exit(42)
+            utils.logger.info(
+                "[KuaishouLogin.login_by_qrcode] QR code dialog not visible yet, trying login button click ..."
+            )
+            login_button_ele = self.context_page.locator(
+                "xpath=//p[text()='登录']"
+            )
+            try:
+                await login_button_ele.click(timeout=5000)
+            except Exception as click_err:
+                utils.logger.info(
+                    f"[KuaishouLogin.login_by_qrcode] Normal click failed, retrying with force=True: {click_err}"
+                )
+                try:
+                    await login_button_ele.click(force=True, timeout=5000)
+                except Exception as force_err:
+                    utils.logger.info(
+                        f"[KuaishouLogin.login_by_qrcode] force click failed, retrying with DOM click: {force_err}"
+                    )
+                    await login_button_ele.evaluate("(el) => el.click()")
+
+            await asyncio.sleep(0.5)
+            base64_qrcode_img = await utils.find_login_qrcode(
+                self.context_page,
+                selector=qrcode_img_selector
+            )
+            if not base64_qrcode_img:
+                utils.logger.info("[KuaishouLogin.login_by_qrcode] login failed , have not found qrcode please check ....")
+                sys.exit(42)
+        else:
+            utils.logger.info("[KuaishouLogin.login_by_qrcode] QR code already visible, skip login button click")
 
         # Capture login page URL for redirect detection
         login_page_url = self.context_page.url
