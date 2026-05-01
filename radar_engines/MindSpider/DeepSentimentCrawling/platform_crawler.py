@@ -416,21 +416,6 @@ postgres_db_config = {{
             logger.exception(f"创建基础配置失败: {e}")
             return False
     
-    def _detect_login_state(self, platform: str) -> bool:
-        """检测指定平台是否已有浏览器登录态（Cookie 数据库中是否有实际数据）。
-
-        判据：browser_data/{platform}_user_data_dir/Default/Network/Cookies 文件 > 30KB。
-        空 Chromium Cookie DB 约 20KB，有实际登录 cookie 后通常 > 30KB。
-        """
-        cookie_db = (self.mediacrawler_path / "browser_data"
-                     / f"{platform}_user_data_dir" / "Default" / "Network" / "Cookies")
-        try:
-            if cookie_db.is_file() and cookie_db.stat().st_size > 30720:
-                return True
-        except OSError:
-            pass
-        return False
-
     def run_crawler(self, platform: str, keywords: List[str],
                    login_type: str = "auto", max_notes: int = 50) -> Dict:
         """
@@ -462,12 +447,11 @@ postgres_db_config = {{
             if not self.configure_mediacrawler_db():
                 return {"success": False, "error": "数据库配置失败"}
             
-            # 自动检测登录方式：有 cookie 状态 → cookie，无 → qrcode
+            # 自动检测登录方式：默认 qrcode，pong() 自己判断是否已有登录态跳过
             effective_login_type = login_type
             if login_type == "auto":
-                has_state = self._detect_login_state(platform)
-                effective_login_type = "cookie" if has_state else "qrcode"
-                logger.info(f"[{platform}] 自动检测登录方式: {'cookie (已有登录态)' if has_state else 'qrcode (首次登录)'}")
+                effective_login_type = "qrcode"
+                logger.info(f"[{platform}] 自动选择登录方式: qrcode（已有登录态则自动跳过）")
 
             # 创建基础配置（用实际登录方式，MediaCrawler 不支持 "auto"）
             if not self.create_base_config(platform, keywords, "search", max_notes, effective_login_type):
@@ -516,9 +500,9 @@ postgres_db_config = {{
 
             return_code = result.returncode
 
-            # cookie 登录失败（返回码 42）且非手动指定时，自动回退到 qrcode
-            if return_code == 42 and effective_login_type == "cookie" and login_type == "auto":
-                logger.warning(f"[{platform}] cookie 登录失败，自动回退到 qrcode 扫码登录...")
+            # cookie 登录失败 → 自动回退到 qrcode
+            if return_code != 0 and effective_login_type == "cookie":
+                logger.warning(f"[{platform}] cookie 登录失败 (rc={return_code})，自动回退到 qrcode 扫码登录...")
                 cmd[cmd.index("--lt") + 1] = "qrcode"
                 logger.info(f"重试命令: {' '.join(cmd)}")
                 result = subprocess.run(
