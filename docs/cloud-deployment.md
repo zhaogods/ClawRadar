@@ -6,47 +6,55 @@
 
 ## 原理
 
-`--server-mode` 启用后：
+`server_mode` 启用后：
 
-- **CDP 模式**：使用系统安装的 Chrome/Chromium（真实浏览器），绕过平台反爬检测
-- Playwright 启动时添加 `--no-sandbox --disable-dev-shm-usage`
+- **Xvfb 虚拟显示**：创建虚拟帧缓冲（:99），Chrome 以 `HEADLESS=False` 运行，行为与桌面一致
+- 社媒平台无法检测 headless 指纹，正常渲染 QR 码登录页面
 - QR 码通过终端 Unicode 块字符渲染（手机对终端屏幕扫码）
-- 强制 headless 模式
+- Playwright 启动时添加 `--no-sandbox --disable-dev-shm-usage`
 
-**关键**：服务器模式依赖 CDP（Chrome DevTools Protocol）连接系统 Chrome。无 CDP，headless Chromium 被社媒平台反爬拦截，QR 码根本不渲染。
+**关键**：Xvfb 替代物理显示器，浏览器行为与桌面完全一致（`HEADLESS=False`），反爬检测无触发条件。CDP 模式已废弃（headless Chrome 仍被检测，非 headless 又需要 GUI，自相矛盾）。
 
 ## 系统依赖
 
-### 1. Chrome / Chromium
+### 1. Node.js（必需）
+
+`pyexecjs` 需要 JS 运行时执行各平台签名脚本（如 `douyin.js`），缺失会导致爬虫启动直接失败：
 
 ```bash
 # Debian/Ubuntu
-sudo apt-get update
-sudo apt-get install -y chromium-browser
+sudo apt install nodejs
 
-# 或 Google Chrome
-wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
-sudo apt-get update
-sudo apt-get install -y google-chrome-stable
+# CentOS/RHEL
+sudo yum install nodejs
 ```
 
-### 2. Playwright 浏览器
+### 2. Xvfb（必需）
+
+```bash
+# Debian/Ubuntu
+sudo apt install xvfb
+
+# CentOS/RHEL
+sudo yum install xorg-x11-server-Xvfb
+```
+
+### 3. Playwright 浏览器
 
 ```bash
 playwright install --with-deps chromium
 ```
 
-### 3. 中文字体（报告渲染用）
+### 4. 中文字体（报告渲染用）
 
 ```bash
-sudo apt-get install -y fonts-noto-cjk fonts-wqy-zenhei
+sudo apt install fonts-noto-cjk fonts-wqy-zenhei
 ```
 
-### 4. 系统库
+### 5. 系统库
 
 ```bash
-sudo apt-get install -y \
+sudo apt install -y \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
     libcups2 libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 \
     libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 \
@@ -146,14 +154,24 @@ python start.py
 
 ## 故障排查
 
-### Chrome 无法启动
+### Node.js 未安装
+
+错误特征：`execjs._exceptions.RuntimeUnavailableError: Could not find an available JavaScript runtime.`
 
 ```bash
-# 确认 Chrome 已安装
-which google-chrome-stable || which chromium-browser
+node --version           # 确认已安装
+sudo apt install nodejs  # Debian/Ubuntu
+```
 
-# 确认无沙箱模式可用
-google-chrome-stable --no-sandbox --disable-gpu --headless --dump-dom https://example.com
+### Xvfb 无法启动
+
+```bash
+# 检查 :99 端口是否被占用
+ps aux | grep Xvfb
+
+# 手动测试 Xvfb
+Xvfb :99 -screen 0 1920x1080x24 -ac &
+DISPLAY=:99 xdpyinfo || echo "Xvfb 未正常工作"
 ```
 
 ### Cookie 过期

@@ -466,6 +466,8 @@ postgres_db_config = {{
                 env["DISPLAY"] = self._xvfb_display
 
             # 切换到MediaCrawler目录并执行
+            # 子进程输出直接继承 stdout/stderr（QR 码需在终端实时显示），
+            # 不在 Python 层捕获，避免阻塞 QR 码扫码流程
             result = subprocess.run(
                 cmd,
                 cwd=self.mediacrawler_path,
