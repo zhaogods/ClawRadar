@@ -1,5 +1,7 @@
 # ClawRadar 项目依赖（含 MediaCrawler 爬虫引擎）
 # 安装: pip install -r requirements.txt
+# 这里只维护 Python 依赖；Ubuntu 服务器上的 Chrome / Xvfb / Node.js 等系统依赖
+# 请按 docs/cloud-deployment.md 单独安装，不在本文件中声明。
 
 # ===== Web 框架 =====
 flask

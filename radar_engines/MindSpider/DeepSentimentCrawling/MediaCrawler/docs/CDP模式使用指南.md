@@ -18,206 +18,174 @@ CDP模式支持两种使用方式：
 
 | 模式 | 说明 | 适用场景 |
 |------|------|----------|
-| **连接已有浏览器**（默认推荐） | 连接用户正在使用的 Chrome 浏览器，复用真实的 Cookie、扩展和浏览历史 | 反检测要求高，需要最大程度降低风控风险 |
-| **启动新浏览器** | 自动检测并启动一个新的 Chrome/Edge 浏览器实例 | 不需要复用浏览器状态的场景 |
+| **连接已有浏览器** | 连接一个已经开启远程调试的 Chrome 浏览器，复用浏览器当前状态 | 调试、人工干预、临时接管 |
+| **启动新浏览器**（服务器正式方案） | 由程序自动拉起真实 Chrome/Edge 并通过 CDP 连接 | Ubuntu 服务器正式运行、长期复用登录态 |
 
-## 快速开始
+## Ubuntu 服务器正式方案
 
-### 方式一：连接已有浏览器（默认推荐）
+这是当前项目推荐的服务器落地方式：**真实 Chrome + Xvfb + CDP**。
 
-这是**默认且推荐**的方式，直接连接你正在使用的 Chrome 浏览器，反检测效果最好。
+### 目标形态
 
-#### 第一步：确保 Chrome 版本
+- Ubuntu 服务器安装真实 Chrome
+- 通过 Xvfb 提供虚拟显示环境
+- DeepSentimentCrawling 主流程启用 CDP
+- 由程序直接拉起真实 Chrome（默认不连接已有浏览器）
+- 使用服务器本机生成的持久化 profile 沉淀登录态
 
-需要 Chrome **144 或更高版本**（2026年1月起的稳定版均支持）。在地址栏输入 `chrome://version` 查看当前版本。
-
-如果版本过低，请前往 [Chrome 官网](https://www.google.com/chrome/) 下载最新版。
-
-#### 第二步：开启远程调试
-
-1. 在 Chrome 地址栏输入：`chrome://inspect/#remote-debugging`
-2. 勾选 **"Allow remote debugging for this browser instance"**
-3. 页面会显示 `Server running at: 127.0.0.1:9222`，表示已就绪
-
-#### 第三步：运行爬虫
+### 必备依赖
 
 ```bash
-uv run main.py --platform xhs --lt qrcode --type search
+sudo apt update
+sudo apt install -y xvfb wget gnupg
+wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+printf 'deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main\n' | sudo tee /etc/apt/sources.list.d/google-chrome.list
+sudo apt update
+sudo apt install -y google-chrome-stable
 ```
 
-运行后，Chrome 浏览器会**弹出确认对话框**，点击"接受"即可。程序会等待用户确认（默认60秒超时）。
+安装完成后确认路径：
 
-#### 配置说明
+```bash
+which google-chrome
+google-chrome --version
+Xvfb -version
+```
 
-`config/base_config.py` 中的默认配置：
+### 服务器环境变量（正式运行推荐）
+
+```bash
+export CLAWRADAR_SERVER_MODE=1
+export CLAWRADAR_ENABLE_CDP_MODE=1
+export CLAWRADAR_CDP_CONNECT_EXISTING=0
+export CLAWRADAR_CDP_HEADLESS=0
+export CLAWRADAR_CDP_DEBUG_PORT=9222
+export CLAWRADAR_CDP_CUSTOM_BROWSER_PATH=/usr/bin/google-chrome
+```
+
+含义：
+
+- `CLAWRADAR_SERVER_MODE=1`：启用服务器模式，并由外层封装负责 Xvfb
+- `CLAWRADAR_ENABLE_CDP_MODE=1`：强制 DeepSentimentCrawling 主流程进入 CDP 模式
+- `CLAWRADAR_CDP_CONNECT_EXISTING=0`：正式环境默认由程序拉起 Chrome，而不是连接现有浏览器
+- `CLAWRADAR_CDP_HEADLESS=0`：配合 Xvfb 使用可见界面，便于扫码和登录态沉淀
+- `CLAWRADAR_CDP_DEBUG_PORT=9222`：Chrome 远程调试端口
+- `CLAWRADAR_CDP_CUSTOM_BROWSER_PATH=/usr/bin/google-chrome`：指定 Ubuntu 真实 Chrome 路径
+
+### 运行方式
+
+先导出环境变量，再按正常主流程运行：
+
+```bash
+python run_clawradar_deliverable.py --input-mode real_source --source-ids ks --limit 5 --server-mode
+```
+
+或在 MindSpider 侧运行：
+
+```bash
+python main.py --deep-sentiment --test
+```
+
+### 登录态沉淀
+
+CDP 启动新浏览器模式下，程序会在 `browser_data/` 下为 CDP 浏览器生成持久化 profile。首次扫码成功后，后续任务会优先复用服务器本机的登录态。
+
+推荐做法：
+
+1. 首次运行时保留 `CLAWRADAR_CDP_HEADLESS=0`
+2. 在 Xvfb 提供的显示环境下完成扫码
+3. 确认浏览器 profile 已生成且登录成功
+4. 后续继续复用同一服务器环境与 profile
+
+## 调试/应急模式：连接已有浏览器
+
+仅在需要人工介入或调试时启用。
+
+### 启动已有 Chrome
+
+```bash
+google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-cdp
+```
+
+### 切换配置
+
+```bash
+export CLAWRADAR_ENABLE_CDP_MODE=1
+export CLAWRADAR_CDP_CONNECT_EXISTING=1
+export CLAWRADAR_CDP_DEBUG_PORT=9222
+```
+
+此时程序会连接已有浏览器，而不会自行拉起新的 Chrome。
+
+## 配置优先级
+
+在当前项目中，DeepSentimentCrawling 外层封装会在运行前写入 MediaCrawler 配置。正式运行时应优先通过以下环境变量控制 CDP：
+
+- `CLAWRADAR_SERVER_MODE`
+- `CLAWRADAR_ENABLE_CDP_MODE`
+- `CLAWRADAR_CDP_CONNECT_EXISTING`
+- `CLAWRADAR_CDP_HEADLESS`
+- `CLAWRADAR_CDP_DEBUG_PORT`
+- `CLAWRADAR_CDP_CUSTOM_BROWSER_PATH`
+
+如果未显式设置：
+
+- 服务器模式默认启用 CDP
+- 服务器模式默认由程序拉起真实 Chrome
+- 非服务器模式默认更偏向连接已有浏览器
+
+## 基础配置项说明
+
+`MediaCrawler/config/base_config.py` 中的相关字段：
 
 ```python
-# 启用CDP模式
-ENABLE_CDP_MODE = True
-
-# 连接已有浏览器（默认开启）
-CDP_CONNECT_EXISTING = True
-
-# CDP调试端口（与 chrome://inspect 页面显示的端口一致）
+ENABLE_CDP_MODE = False
+SERVER_MODE = False
 CDP_DEBUG_PORT = 9222
+CUSTOM_BROWSER_PATH = ""
+CDP_HEADLESS = False
+CDP_CONNECT_EXISTING = True
+AUTO_CLOSE_BROWSER = True
 ```
 
-### 方式二：启动新浏览器
-
-如果不想连接已有浏览器，可以让程序自动启动一个新的浏览器实例：
-
-```python
-ENABLE_CDP_MODE = True
-CDP_CONNECT_EXISTING = False  # 关闭连接已有浏览器，改为启动新浏览器
-```
-
-## 配置选项详解
-
-### 基础配置
-
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `ENABLE_CDP_MODE` | bool | True | 是否启用CDP模式 |
-| `CDP_CONNECT_EXISTING` | bool | True | 是否连接已有浏览器（推荐开启） |
-| `CDP_DEBUG_PORT` | int | 9222 | CDP调试端口 |
-| `CDP_HEADLESS` | bool | False | CDP模式下的无头模式 |
-| `AUTO_CLOSE_BROWSER` | bool | True | 程序结束时是否关闭浏览器 |
-
-### 高级配置
-
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `CUSTOM_BROWSER_PATH` | str | "" | 自定义浏览器路径（仅启动新浏览器模式下有效） |
-| `BROWSER_LAUNCH_TIMEOUT` | int | 60 | 浏览器连接超时时间（秒） |
-
-### 自定义浏览器路径
-
-如果系统自动检测失败，可以手动指定浏览器路径：
-
-```python
-# Windows示例
-CUSTOM_BROWSER_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-
-# macOS示例  
-CUSTOM_BROWSER_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-
-# Linux示例
-CUSTOM_BROWSER_PATH = "/usr/bin/google-chrome"
-```
-
-## 支持的浏览器
-
-### Windows
-- Google Chrome (稳定版、Beta、Dev、Canary)
-- Microsoft Edge (稳定版、Beta、Dev、Canary)
-
-### macOS
-- Google Chrome (稳定版、Beta、Dev、Canary)
-- Microsoft Edge (稳定版、Beta、Dev、Canary)
-
-### Linux
-- Google Chrome / Chromium
-- Microsoft Edge
-
-## 使用示例
-
-### 基本使用
-
-```python
-import asyncio
-from playwright.async_api import async_playwright
-from tools.cdp_browser import CDPBrowserManager
-
-async def main():
-    cdp_manager = CDPBrowserManager()
-    
-    async with async_playwright() as playwright:
-        # 启动CDP浏览器
-        browser_context = await cdp_manager.launch_and_connect(
-            playwright=playwright,
-            user_agent="自定义User-Agent",
-            headless=False
-        )
-        
-        # 创建页面并访问网站
-        page = await browser_context.new_page()
-        await page.goto("https://example.com")
-        
-        # 执行爬取操作...
-        
-        # 清理资源
-        await cdp_manager.cleanup()
-
-asyncio.run(main())
-```
-
-### 在爬虫中使用
-
-CDP模式已集成到所有平台爬虫中，只需启用配置即可：
-
-```python
-# 在config/base_config.py中
-ENABLE_CDP_MODE = True
-
-# 然后正常运行爬虫
-python main.py
-```
+这些值会被外层封装在运行时按环境变量重写，实际以运行期配置为准。
 
 ## 故障排除
 
-### 常见问题
-
-#### 1. 浏览器检测失败
-**错误**: `未找到可用的浏览器`
+### 1. 浏览器检测失败
+**错误**: `No available browser found`
 
 **解决方案**:
-- 确保已安装Chrome或Edge浏览器
-- 检查浏览器是否在标准路径下
-- 使用`CUSTOM_BROWSER_PATH`指定浏览器路径
+- 确认已安装 `google-chrome-stable`
+- 用 `which google-chrome` 确认路径
+- 显式设置 `CLAWRADAR_CDP_CUSTOM_BROWSER_PATH=/usr/bin/google-chrome`
 
-#### 2. 端口被占用
-**错误**: `无法找到可用的端口`
-
-**解决方案**:
-- 关闭其他使用调试端口的程序
-- 修改`CDP_DEBUG_PORT`为其他端口
-- 系统会自动尝试下一个可用端口
-
-#### 3. 浏览器启动超时
-**错误**: `浏览器在30秒内未能启动`
+### 2. CDP 端口不可用
+**错误**: CDP 连接失败或端口不可访问
 
 **解决方案**:
-- 增加`BROWSER_LAUNCH_TIMEOUT`值
-- 检查系统资源是否充足
-- 尝试关闭其他占用资源的程序
+- 检查 `CLAWRADAR_CDP_DEBUG_PORT`
+- 确认没有其他 Chrome 占用相同端口
+- 切换到其他端口重新运行
 
-#### 4. CDP连接失败
-**错误**: `CDP连接失败`
+### 3. Xvfb 未安装或未启动
+**错误**: 提示 Xvfb 缺失
 
 **解决方案**:
-- 检查防火墙设置
-- 确保localhost访问正常
-- 尝试重启浏览器
+- 安装 `xvfb`
+- 确保 `CLAWRADAR_SERVER_MODE=1`
+- 由外层封装负责启动和复用 `:99`
 
-### 调试技巧
+### 4. 页面能打开但 API 仍然 `No Login`
+**原因**:
+- 页面态与 API 会话态未对齐
+- 首次登录未在服务器本机 profile 上沉淀成功
+- Chrome 环境仍未稳定复用
 
-#### 1. 启用详细日志
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
-
-#### 2. 手动测试CDP连接
-```bash
-# 手动启动Chrome
-chrome --remote-debugging-port=9222
-
-# 访问调试页面
-curl http://localhost:9222/json
-```
-
-#### 3. 检查浏览器进程
-```bash
+**解决方案**:
+- 确保使用真实 Chrome，而不是默认 Chromium
+- 确保 `CLAWRADAR_CDP_CONNECT_EXISTING=0` 让程序固定使用服务器本机 profile
+- 完成一次服务器侧扫码并保留 profile 后再观察后续任务
 # Windows
 tasklist | findstr chrome
 

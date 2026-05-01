@@ -184,6 +184,38 @@ def _prompt_int(label: str, description: str, default: int, minimum: int = 1) ->
         return resolved
 
 
+def _apply_deep_crawl_env(dc_config: dict) -> None:
+    if not isinstance(dc_config, dict) or not dc_config.get("enabled"):
+        return
+
+    server_mode = dc_config.get("server_mode")
+    if server_mode is True:
+        os.environ["CLAWRADAR_SERVER_MODE"] = "1"
+    elif server_mode is False:
+        os.environ["CLAWRADAR_SERVER_MODE"] = "0"
+
+    env_mappings = {
+        "enable_cdp_mode": "CLAWRADAR_ENABLE_CDP_MODE",
+        "cdp_connect_existing": "CLAWRADAR_CDP_CONNECT_EXISTING",
+        "cdp_headless": "CLAWRADAR_CDP_HEADLESS",
+        "cdp_debug_port": "CLAWRADAR_CDP_DEBUG_PORT",
+        "cdp_custom_browser_path": "CLAWRADAR_CDP_CUSTOM_BROWSER_PATH",
+    }
+
+    for config_key, env_name in env_mappings.items():
+        value = dc_config.get(config_key)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            os.environ[env_name] = "1" if value else "0"
+        else:
+            resolved = str(value).strip()
+            if resolved:
+                os.environ[env_name] = resolved
+            elif env_name in os.environ:
+                os.environ.pop(env_name, None)
+
+
 def _prompt_multi_menu(
     label: str,
     description: str,
@@ -477,7 +509,6 @@ def _collect_deep_crawl_args() -> dict | None:
     )
     max_keywords = _prompt_int("deep_crawl_max_keywords", "每平台最大关键词数", default=50, minimum=5)
     max_notes = _prompt_int("deep_crawl_max_notes", "每平台最大采集笔记数", default=50, minimum=5)
-    # Auto-detect server_mode
     import sys as _sys
     auto_server = _sys.platform == "linux" and not os.environ.get("DISPLAY")
     server_mode = _prompt_menu(
@@ -485,20 +516,68 @@ def _collect_deep_crawl_args() -> dict | None:
         "是否运行在 Linux 云服务器（无物理显示器）？"
         + ("（自动检测：是）" if auto_server else "（自动检测：否）"),
         [
-            (True, "是", "云服务器，自动启动 Xvfb 虚拟显示（需 apt install xvfb），浏览器行为与桌面一致。"),
+            (True, "是", "云服务器，自动启动 Xvfb 虚拟显示。正式方案推荐 Ubuntu + 真实 Chrome + CDP。"),
             (False, "否", "本地 GUI 环境，浏览器有物理显示器，无需 Xvfb。"),
         ],
         default_index=1 if auto_server else 2,
     )
+
+    enable_cdp_mode = _prompt_menu(
+        "deep_crawl_enable_cdp_mode",
+        "是否启用 CDP 真实浏览器模式？Ubuntu 服务器正式方案推荐开启；该启动器只收集参数，不负责安装 Chrome/Xvfb。",
+        [
+            (True, "启用", "使用真实 Chrome/Edge，通过 CDP 建立连接，更适合服务器长期运行和登录态复用。"),
+            (False, "禁用", "退回标准 Playwright 浏览器模式，仅适合本地调试或兼容性排查。"),
+        ],
+        default_index=1 if server_mode else 2,
+    )
+
+    cdp_connect_existing = False
+    cdp_headless = False
+    cdp_debug_port = 9222
+    cdp_custom_browser_path = ""
+
+    if enable_cdp_mode:
+        print("  正式服务器推荐：Ubuntu + 真实 Chrome + Xvfb + CDP，默认由程序拉起本机 Chrome 并沉淀登录态。")
+        cdp_connect_existing = _prompt_menu(
+            "deep_crawl_cdp_connect_existing",
+            "是否连接已手动启动的 Chrome 实例？通常仅用于调试或人工接管。",
+            [
+                (False, "否", "正式部署推荐。由程序在服务器本机拉起真实 Chrome，并复用服务器本机 profile。"),
+                (True, "是", "连接一个你已手动启动并开启远程调试端口的 Chrome 实例。"),
+            ],
+            default_index=2 if not server_mode else 1,
+        )
+        cdp_custom_browser_path = _prompt_text(
+            "deep_crawl_cdp_custom_browser_path",
+            "Chrome 可执行路径；留空时自动探测。Ubuntu 常见为 /usr/bin/google-chrome。",
+            default="/usr/bin/google-chrome" if server_mode else "",
+        )
+        cdp_debug_port = _prompt_int(
+            "deep_crawl_cdp_debug_port",
+            "CDP 调试端口。",
+            default=9222,
+            minimum=1,
+        )
+        cdp_headless = _prompt_menu(
+            "deep_crawl_cdp_headless",
+            "是否启用 CDP headless？配合 Xvfb 的服务器正式方案通常建议关闭。",
+            [
+                (False, "否", "推荐。通过 Xvfb 提供可见界面，更利于扫码和登录态沉淀。"),
+                (True, "是", "仅在你明确需要纯无界面调试时启用。"),
+            ],
+            default_index=1,
+        )
+
     login_type = _prompt_menu(
         "deep_crawl_login_type",
         "选择社媒平台登录方式。",
         [
             ("auto", "自动（推荐）", "自动检测各平台登录态：有 cookie → cookie，无 → qrcode。"),
-            ("qrcode", "扫码登录", "二维码扫码登录。无 GUI 时终端显示 Unicode QR 码。"),
+            ("qrcode", "扫码登录", "二维码扫码登录。无 GUI 时可结合 Xvfb 与二维码输出方式完成扫码。"),
             ("cookie", "Cookie 登录", "通过浏览器 Cookie 登录（需提前从桌面浏览器导出）。"),
         ],
-        default_index=0,
+        default_index=1,
     )
     test_mode = _prompt_menu(
         "deep_crawl_test_mode",
@@ -517,6 +596,11 @@ def _collect_deep_crawl_args() -> dict | None:
         "login_type": login_type,
         "test_mode": test_mode,
         "server_mode": server_mode,
+        "enable_cdp_mode": enable_cdp_mode,
+        "cdp_connect_existing": cdp_connect_existing,
+        "cdp_headless": cdp_headless,
+        "cdp_debug_port": cdp_debug_port,
+        "cdp_custom_browser_path": cdp_custom_browser_path,
     }
 
 
@@ -789,8 +873,7 @@ def main() -> None:
 
     args = _collect_run_args()
     dc_config = getattr(args, "deep_crawl_config", None) or {}
-    if dc_config.get("server_mode"):
-        os.environ["CLAWRADAR_SERVER_MODE"] = "1"
+    _apply_deep_crawl_env(dc_config)
     payload = _build_payload(args)
     result, captured_output = _execute_with_log_mode(
         log_mode,

@@ -363,7 +363,48 @@ postgres_db_config = {{
             # 修改关键配置项
             # skip_until_paren: 当原始行是多行赋值（以"("结尾）被替换为单行后，
             # 需要跳过后续续行直到遇到配对的")"
-            lines = content.split('\n')
+            def _env_bool(name: str, default: bool) -> bool:
+                raw = os.environ.get(name, "").strip().lower()
+                if raw in ("1", "true", "yes", "on"):
+                    return True
+                if raw in ("0", "false", "no", "off"):
+                    return False
+                return default
+
+            def _env_int(name: str, default: int) -> int:
+                raw = os.environ.get(name, "").strip()
+                if not raw:
+                    return default
+                try:
+                    return int(raw)
+                except ValueError:
+                    logger.warning(f"环境变量 {name}={raw} 不是有效整数，使用默认值 {default}")
+                    return default
+
+            def _env_str(name: str, default: str = "") -> str:
+                raw = os.environ.get(name, "").strip()
+                return raw or default
+
+            # 服务器模式默认直接启用 CDP + 真实 Chrome，避免再回退到标准 Playwright 模式。
+            enable_cdp_mode = _env_bool("CLAWRADAR_ENABLE_CDP_MODE", self._server_mode)
+            cdp_connect_existing = _env_bool(
+                "CLAWRADAR_CDP_CONNECT_EXISTING",
+                False if self._server_mode else True,
+            )
+            cdp_headless = _env_bool("CLAWRADAR_CDP_HEADLESS", False)
+            cdp_debug_port = _env_int("CLAWRADAR_CDP_DEBUG_PORT", 9222)
+            cdp_custom_browser_path = _env_str("CLAWRADAR_CDP_CUSTOM_BROWSER_PATH", "")
+
+            logger.info(
+                "CDP配置: enable=%s, connect_existing=%s, headless=%s, debug_port=%s, browser_path=%s"
+                % (
+                    enable_cdp_mode,
+                    cdp_connect_existing,
+                    cdp_headless,
+                    cdp_debug_port,
+                    cdp_custom_browser_path or "auto-detect",
+                )
+            )
             new_lines = []
             skip_until_paren = False
 
@@ -392,9 +433,17 @@ postgres_db_config = {{
                 elif line.startswith('HEADLESS = '):
                     replaced = 'HEADLESS = False'
                 elif line.startswith('ENABLE_CDP_MODE = '):
-                    replaced = 'ENABLE_CDP_MODE = False'
+                    replaced = f'ENABLE_CDP_MODE = {enable_cdp_mode}'
                 elif line.startswith('SERVER_MODE = '):
                     replaced = f'SERVER_MODE = {str(self._server_mode)}'
+                elif line.startswith('CDP_CONNECT_EXISTING = '):
+                    replaced = f'CDP_CONNECT_EXISTING = {cdp_connect_existing}'
+                elif line.startswith('CDP_HEADLESS = '):
+                    replaced = f'CDP_HEADLESS = {cdp_headless}'
+                elif line.startswith('CDP_DEBUG_PORT = '):
+                    replaced = f'CDP_DEBUG_PORT = {cdp_debug_port}'
+                elif line.startswith('CUSTOM_BROWSER_PATH = '):
+                    replaced = f'CUSTOM_BROWSER_PATH = "{cdp_custom_browser_path}"'
                 elif line.startswith('LOGIN_TYPE = '):
                     replaced = f'LOGIN_TYPE = "{login_type}"'
 

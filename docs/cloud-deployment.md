@@ -2,68 +2,75 @@
 
 ## 适用场景
 
-在无 GUI 的 Linux 云服务器（Ubuntu/Debian/CentOS）上运行 ClawRadar 深爬（DeepSentimentCrawling）。
+本文适用于在 **Ubuntu 无桌面服务器** 上运行 ClawRadar 的深爬能力（DeepSentimentCrawling）。当前推荐的正式方案是：
 
-## 原理
+- **真实 Chrome**
+- **Xvfb 虚拟显示**
+- **CDP（Chrome DevTools Protocol）连接**
+- **服务器本机持久化 profile 复用登录态**
 
-`server_mode` 启用后：
+这套方案的目标不是临时跑通，而是让服务器形成一条可长期运行、可复用登录态、尽量接近本地真实浏览器效果的正式链路。
 
-- **Xvfb 虚拟显示**：创建虚拟帧缓冲（:99），Chrome 以 `HEADLESS=False` 运行，行为与桌面一致
-- 社媒平台无法检测 headless 指纹，正常渲染 QR 码登录页面
-- QR 码通过终端 Unicode 块字符渲染（手机对终端屏幕扫码）
-- Playwright 启动时添加 `--no-sandbox --disable-dev-shm-usage`
+## 正式运行原理
 
-**关键**：Xvfb 替代物理显示器，浏览器行为与桌面完全一致（`HEADLESS=False`），反爬检测无触发条件。CDP 模式已废弃（headless Chrome 仍被检测，非 headless 又需要 GUI，自相矛盾）。
+服务器环境下的推荐运行形态是：**Xvfb 提供显示环境，程序通过 CDP 拉起或连接真实 Chrome，再由深爬主流程接管浏览器完成扫码与抓取。**
+
+关键点：
+
+- `Xvfb` 提供虚拟显示，不需要安装完整桌面环境
+- 浏览器使用系统安装的真实 Chrome，而不是仅依赖 Playwright 默认 Chromium
+- DeepSentimentCrawling 外层通过环境变量把 CDP 配置写入 MediaCrawler 运行期配置
+- 首次扫码成功后，登录态沉淀到服务器本机 profile，后续任务优先复用
 
 ## 系统依赖
 
-### 1. Node.js（必需）
-
-`pyexecjs` 需要 JS 运行时执行各平台签名脚本（如 `douyin.js`），缺失会导致爬虫启动直接失败：
+### 1. Xvfb
 
 ```bash
-# Debian/Ubuntu
-sudo apt install nodejs
-
-# CentOS/RHEL
-sudo yum install nodejs
+sudo apt update
+sudo apt install -y xvfb
 ```
 
-### 2. Xvfb（必需）
+安装后可验证：
 
 ```bash
-# Debian/Ubuntu
-sudo apt install xvfb
-
-# CentOS/RHEL
-sudo yum install xorg-x11-server-Xvfb
+Xvfb -version
 ```
 
-### 3. zbar-tools + qrencode（QR 码终端渲染）
+### 2. Node.js
+
+部分平台签名脚本依赖 `execjs` 调用本机 JavaScript 运行时，例如抖音、知乎相关能力，因此服务器仍需安装 Node.js：
 
 ```bash
-# Debian/Ubuntu
-sudo apt install zbar-tools qrencode
-
-# CentOS/RHEL (EPEL)
-sudo yum install zbar qrencode
+sudo apt install -y nodejs npm
 ```
 
-> 未安装时 QR 码仍可通过 HTTP 服务或 PNG 文件查看，终端渲染会自动跳过。
-
-### 5. Playwright 浏览器
+验证：
 
 ```bash
-playwright install --with-deps chromium
+node --version
+npm --version
 ```
 
-### 6. 中文字体（报告渲染用）
+### 3. QR 码辅助工具
+
+如果你希望在终端里直接查看二维码，建议安装：
 
 ```bash
-sudo apt install fonts-noto-cjk fonts-wqy-zenhei
+sudo apt install -y zbar-tools qrencode
 ```
 
-### 7. 系统库
+未安装时不影响正式流程，只是终端二维码渲染会跳过，仍可通过 PNG 或 HTTP 方式查看二维码。
+
+### 4. 中文字体
+
+用于报告渲染与部分页面显示：
+
+```bash
+sudo apt install -y fonts-noto-cjk fonts-wqy-zenhei
+```
+
+### 5. 常见图形/浏览器系统库
 
 ```bash
 sudo apt install -y \
@@ -73,186 +80,262 @@ sudo apt install -y \
     libcairo2 libasound2 libatspi2.0-0
 ```
 
-## Cookie 配置
+## Ubuntu 安装真实 Chrome
 
-服务器模式下，登录需要预配置 Cookie。获取方法：
-
-### 步骤
-
-1. **本地桌面登录**: 在本地机器上运行 `python start.py`，选择深爬 + 扫码登录，扫码完成登录。
-
-2. **导出 Cookie**: 登录成功后，浏览器 DevTools → Application → Cookies → 复制所有 cookie。
-
-   或者从浏览器数据目录导出：
-   ```bash
-   # Chrome cookie 存储在:
-   # Linux: ~/.config/google-chrome/Default/Cookies
-   # Windows: %LOCALAPPDATA%\Google\Chrome\User Data\Default\Network\Cookies
-   # macOS: ~/Library/Application Support/Google/Chrome/Default/Cookies
-   ```
-
-3. **填入配置**: 在 `.env` 中或 MediaCrawler 配置中填入 cookie 字符串。
-
-### 各平台 Cookie 格式
-
-```python
-# XHS (小红书)
-COOKIES = "abRequestId=xxx; a1=xxx; webId=xxx; gid=xxx; web_session=xxx; ..."
-
-# Douyin (抖音)
-COOKIES = "sessionid=xxx; passport_csrf_token=xxx; ..."
-
-# Weibo (微博)
-COOKIES = "SUB=xxx; SUBP=xxx; ..."
-
-# Bilibili (B站)
-COOKIES = "SESSDATA=xxx; bili_jct=xxx; DedeUserID=xxx; ..."
-
-# Zhihu (知乎)
-COOKIES = "z_c0=xxx; d_c0=xxx; ..."
-```
-
-Cookie 通常有 7-30 天有效期，需要定期刷新。
-
-## 运行
-
-### 方式一: 命令行
+这是当前正式方案的核心前置条件。
 
 ```bash
-# 设置环境变量
-export CLAWRADAR_SERVER_MODE=1
+sudo apt update
+sudo apt install -y wget gnupg
+wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+printf 'deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main\n' | sudo tee /etc/apt/sources.list.d/google-chrome.list
+sudo apt update
+sudo apt install -y google-chrome-stable
+```
 
-# 运行
+安装后验证：
+
+```bash
+which google-chrome
+google-chrome --version
+```
+
+常见路径：
+
+- `/usr/bin/google-chrome`
+- `/usr/bin/google-chrome-stable`
+
+如果自动探测失败，建议显式设置：
+
+```bash
+export CLAWRADAR_CDP_CUSTOM_BROWSER_PATH=/usr/bin/google-chrome
+```
+
+## Python 依赖安装
+
+先在项目根目录创建虚拟环境并安装 Python 包：
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+说明：
+
+- `requirements.txt` 只负责 Python 依赖
+- `Chrome`、`Xvfb`、`Node.js` 等系统组件不在 Python requirements 中，需要按本文单独安装
+
+## Xvfb 运行方式
+
+DeepSentimentCrawling 在 `server_mode` 下会尝试负责 `DISPLAY=:99` 和 Xvfb 复用，但你仍应确认服务器具备 Xvfb 运行条件。
+
+手动验证示例：
+
+```bash
+Xvfb :99 -screen 0 1920x1080x24 -ac &
+DISPLAY=:99 xdpyinfo >/dev/null && echo "Xvfb OK"
+```
+
+正式运行时建议启用：
+
+```bash
+export CLAWRADAR_SERVER_MODE=1
+```
+
+## 正式运行环境变量
+
+推荐使用以下环境变量固定正式方案：
+
+```bash
+export CLAWRADAR_SERVER_MODE=1
+export CLAWRADAR_ENABLE_CDP_MODE=1
+export CLAWRADAR_CDP_CONNECT_EXISTING=0
+export CLAWRADAR_CDP_HEADLESS=0
+export CLAWRADAR_CDP_DEBUG_PORT=9222
+export CLAWRADAR_CDP_CUSTOM_BROWSER_PATH=/usr/bin/google-chrome
+```
+
+含义：
+
+- `CLAWRADAR_SERVER_MODE=1`：启用服务器模式，并由外层封装负责 Xvfb
+- `CLAWRADAR_ENABLE_CDP_MODE=1`：强制主流程进入 CDP 模式
+- `CLAWRADAR_CDP_CONNECT_EXISTING=0`：默认由程序拉起服务器本机的真实 Chrome
+- `CLAWRADAR_CDP_HEADLESS=0`：配合 Xvfb 使用可见界面，便于扫码和登录态沉淀
+- `CLAWRADAR_CDP_DEBUG_PORT=9222`：Chrome 远程调试端口
+- `CLAWRADAR_CDP_CUSTOM_BROWSER_PATH=/usr/bin/google-chrome`：显式指定 Chrome 路径
+
+## 运行方式
+
+### 方式一：交互式启动
+
+```bash
+python start.py
+```
+
+推荐选择：
+
+- 深爬：启用
+- 服务器模式：是
+- CDP 真实浏览器模式：启用
+- 连接已有 Chrome：否
+- Chrome 路径：`/usr/bin/google-chrome` 或留空自动探测
+- CDP 端口：`9222`
+- CDP headless：否
+
+说明：`start.py` 只负责收集并透传参数，不负责替你安装 Chrome 或 Xvfb。
+
+### 方式二：主流程命令行启动
+
+先设置环境变量，再运行主流程：
+
+```bash
 python run_clawradar_deliverable.py \
     --input-mode real_source \
     --source-ids weibo zhihu \
     --limit 5 \
     --deep-crawl \
-    --deep-crawl-platforms zhihu weibo bili \
-    --deep-crawl-login-type cookie
+    --deep-crawl-platforms ks zhihu bili \
+    --server-mode
 ```
 
-### 方式二: --server-mode 参数
+### 方式三：MindSpider 侧单独验证
 
 ```bash
-python run_clawradar_deliverable.py \
-    --server-mode \
-    --deep-crawl \
-    --deep-crawl-platforms zhihu bili
+python radar_engines/MindSpider/main.py --deep-sentiment --test
 ```
 
-### 方式三: 交互式
+## 首次扫码与登录态沉淀
+
+正式方案下，首次运行应让浏览器完成一次真实扫码登录，并把 profile 保存在服务器本机。
+
+建议流程：
+
+1. 保持 `CLAWRADAR_CDP_HEADLESS=0`
+2. 在 Xvfb 环境下启动任务
+3. 完成一次扫码登录
+4. 确认后续任务复用同一服务器环境与 profile
+
+如果你需要人工介入调试，也可以临时切换为连接已有浏览器模式：
 
 ```bash
-python start.py
-# 按提示选择: 服务器模式 = 是
+export CLAWRADAR_ENABLE_CDP_MODE=1
+export CLAWRADAR_CDP_CONNECT_EXISTING=1
+export CLAWRADAR_CDP_DEBUG_PORT=9222
 ```
 
-## QR 码登录
-
-服务器模式下，QR 码通过三种方式展示（按优先级）：
-
-### 方式一：终端渲染（zbarimg + qrencode）
-
-需安装 `zbar-tools qrencode`。解码平台 QR 图片后以高精度 UTF8 块字符重新编码，手机可直接对终端屏幕扫码。
-
-```
-[QRCode] 请用手机扫描下方二维码完成登录:
-
-██████████████████████████████████████████████████████████████████
-██████████████████████████████████████████████████████████████████
-██                          ██████                        ██████
-```
-
-### 方式二：HTTP 服务（推荐远程场景）
-
-自动在后台启动 HTTP 服务，以 7 位 token 鉴权。URL 格式：
-
-```
-http://<host>:<port>/<7位token>/qrcode_login.png
-```
-
-配置选项（`.env` 或环境变量）：
+然后手工启动 Chrome：
 
 ```bash
-QRCODE_HTTP_TOKEN=        # 留空则随机生成 7 位字母数字 token
-QRCODE_HTTP_PORT=8888     # HTTP 端口，冲突时自动递增
-QRCODE_HTTP_HOST=         # 公网 IP 或域名（NAT 场景），默认 127.0.0.1
+google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-cdp
 ```
 
-浏览器直接打开 URL 即可看到 QR 码图片，手机扫码完成登录。
+这更适合调试，不建议作为正式长期运行方案。
 
-### 方式三：PNG 文件
+## 二维码查看方式
 
-QR 码始终保存为当前工作目录下的 `qrcode_login.png`，可用 scp 下载后扫码。
+扫码阶段仍可沿用当前项目已有的二维码输出能力：
+
+1. 终端渲染（依赖 `zbar-tools` + `qrencode`）
+2. HTTP 方式查看二维码图片
+3. 输出 `qrcode_login.png` 后通过 scp 下载查看
+
+如果需要扫码通知，可继续配置：
 
 ```bash
-scp user@server:/path/to/MediaCrawler/qrcode_login.png .
+export PUSHPLUS_TOKEN=你的token
 ```
-
-### PushPlus 通知
-
-配置 `PUSHPLUS_TOKEN` 后，每次出现扫码登录时会自动推送微信通知，含平台名称和 HTTP 扫码地址：
-
-```bash
-# .env 或环境变量
-PUSHPLUS_TOKEN=你的token
-```
-
-通知内容示例：
-> **ClawRadar - xhs 需要扫码登录**
->
-> 请打开以下地址查看二维码并扫码：http://your-server:8888/Abc123X/qrcode_login.png
-
-登录超时 2 分钟，超时后该平台被跳过。
 
 ## 故障排查
 
-### Node.js 未安装
+### 1. 浏览器检测失败
 
-错误特征：`execjs._exceptions.RuntimeUnavailableError: Could not find an available JavaScript runtime.`
+错误特征：`No available browser found`
+
+处理方式：
 
 ```bash
-node --version           # 确认已安装
-sudo apt install nodejs  # Debian/Ubuntu
+which google-chrome
+google-chrome --version
 ```
 
-### zbarimg / qrencode 未安装
-
-错误特征：`[QRCode] zbarimg / qrencode not installed! Run: sudo apt install zbar-tools qrencode`
-
-终端 QR 码渲染不可用，但不影响登录——仍可通过 HTTP 服务或 PNG 文件扫码。
+若路径不是 `/usr/bin/google-chrome`，请显式设置：
 
 ```bash
-sudo apt install zbar-tools qrencode  # Debian/Ubuntu
+export CLAWRADAR_CDP_CUSTOM_BROWSER_PATH=/你的/chrome/路径
 ```
 
-### Xvfb 无法启动
+### 2. CDP 端口不可用
+
+错误特征：CDP 连接失败、端口被占用或无法访问。
+
+处理方式：
 
 ```bash
-# 检查 :99 端口是否被占用
+ss -ltnp | grep 9222
+```
+
+如有冲突，切换端口：
+
+```bash
+export CLAWRADAR_CDP_DEBUG_PORT=9333
+```
+
+### 3. Xvfb 未安装或未正常工作
+
+处理方式：
+
+```bash
 ps aux | grep Xvfb
-
-# 手动测试 Xvfb
 Xvfb :99 -screen 0 1920x1080x24 -ac &
 DISPLAY=:99 xdpyinfo || echo "Xvfb 未正常工作"
 ```
 
-### Cookie 过期
+### 4. Node.js 未安装
 
-错误特征：`登录失败（cookie）：2分钟内未完成登录` 或返回 401/403。
+错误特征：`execjs._exceptions.RuntimeUnavailableError: Could not find an available JavaScript runtime.`
 
-解决：重新导出 cookie，更新 `.env` 配置。
+处理方式：
 
-### 缺少字体
+```bash
+node --version
+sudo apt install -y nodejs npm
+```
+
+### 5. 页面已打开但 API 仍然 `No Login`
+
+常见原因：
+
+- 页面态与 API 会话态未对齐
+- 首次登录没有在服务器本机 profile 上成功沉淀
+- 实际仍在使用默认 Chromium 或临时浏览器环境
+
+建议检查：
+
+- 是否已安装并使用真实 Chrome
+- 是否已设置 `CLAWRADAR_CDP_CONNECT_EXISTING=0` 用于固定复用服务器本机 profile
+- 是否完成过至少一次服务器侧真实扫码登录
+
+### 6. 缺少字体
 
 错误特征：PDF/图表中文显示为方块。
 
 ```bash
-sudo apt-get install -y fonts-noto-cjk
+sudo apt install -y fonts-noto-cjk fonts-wqy-zenhei
 fc-cache -fv
 ```
 
-### 内存不足
+### 7. 内存不足
 
-Chromium 每个实例约 200-400MB。7 个平台串行爬取，峰值约 400MB。建议服务器至少 2GB RAM。
+真实 Chrome + Xvfb 会比纯 headless 更占资源。建议服务器至少预留 2GB RAM，并避免同一时刻拉起过多浏览器实例。
+
+## 与旧方案的区别
+
+当前正式方案不再以“服务器上长期依赖 Chromium + 预导出 Cookie”作为默认路径，而是：
+
+- 优先使用真实 Chrome
+- 优先让服务器本机沉淀登录态
+- 通过 Xvfb 提供显示能力
+- 通过 CDP 连接真实浏览器
+
+如果只是本地快速调试，仍然可以临时退回标准 Playwright 模式；但在 Ubuntu 服务器正式落地时，推荐始终以 **真实 Chrome + Xvfb + CDP** 为默认方案。
