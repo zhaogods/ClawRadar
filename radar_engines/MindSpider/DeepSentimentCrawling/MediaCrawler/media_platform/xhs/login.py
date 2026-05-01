@@ -51,17 +51,35 @@ class XiaoHongShuLogin(AbstractLogin):
     @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, no_logged_in_session: str, login_page_url: str = "") -> bool:
         """
-        Verify login status using multi-signal detection: URL redirect, QR disappearance,
-        UI elements, and cookie change.
+        Verify login status using multi-signal detection + active page refresh.
+
+        Passive checks run every 1s. After 30s, page is actively refreshed every 30s
+        to trigger the post-login redirect that the page's own JS polling may miss.
         """
-        # 0. URL redirect detection — page navigated away from login
+        self._qr_check_count = getattr(self, '_qr_check_count', 0) + 1
+        cnt = self._qr_check_count
+
+        # 0. Active page refresh — trigger post-login redirect
+        #    XHS page uses JS polling/WebSocket to detect scan confirmation.
+        #    In Playwright + Xvfb this sometimes stalls. Periodic goto() forces
+        #    a fresh navigation; if the session is authenticated server-side,
+        #    the page loads without the login modal.
+        if cnt % 30 == 0 and cnt >= 30 and login_page_url:
+            utils.logger.info(f"[XHS] Active refresh #{cnt // 30} — reloading page to trigger redirect...")
+            try:
+                await self.context_page.goto(login_page_url, wait_until="domcontentloaded", timeout=15000)
+                await asyncio.sleep(2)
+            except Exception as e:
+                utils.logger.info(f"[XHS] Refresh goto failed: {e}")
+
+        # 1. URL redirect detection — page navigated away from login
         if login_page_url:
             current_url = self.context_page.url
             if current_url != login_page_url and "/login" not in current_url.lower():
                 utils.logger.info("[XHS] Login confirmed by URL redirect")
                 return True
 
-        # 1. QR code disappearance + user content appeared
+        # 2. QR code disappearance + user content appeared
         try:
             qrcode_gone = not await self.context_page.is_visible(
                 "xpath=//img[@class='qrcode-img']", timeout=300
@@ -70,7 +88,6 @@ class XiaoHongShuLogin(AbstractLogin):
                 "div.login-container", timeout=300
             )
             if qrcode_gone or login_dialog_gone:
-                # QR/dialog closed — check for user-related signals
                 user_selectors = [
                     "xpath=//a[contains(@href, '/user/profile/')]//span[text()='我']",
                     "xpath=//*[@id='app']//div[contains(@class, 'user')]",
@@ -83,12 +100,11 @@ class XiaoHongShuLogin(AbstractLogin):
                             return True
                     except Exception:
                         pass
-                # Dialog closed but no user element yet — give it more time
                 utils.logger.info("[XHS] Login dialog closed, waiting for user elements...")
         except Exception:
             pass
 
-        # 2. UI element check — "Me" button in sidebar
+        # 3. UI element check — "Me" button in sidebar
         try:
             user_profile_selector = "xpath=//a[contains(@href, '/user/profile/')]//span[text()='我']"
             is_visible = await self.context_page.is_visible(user_profile_selector, timeout=500)
@@ -98,11 +114,11 @@ class XiaoHongShuLogin(AbstractLogin):
         except Exception:
             pass
 
-        # 3. CAPTCHA appeared
+        # 4. CAPTCHA appeared
         if "请通过验证" in await self.context_page.content():
             utils.logger.info("[XHS] CAPTCHA appeared, please verify manually")
 
-        # 4. Cookie-based change detection
+        # 5. Cookie-based change detection
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
         current_web_session = cookie_dict.get("web_session")

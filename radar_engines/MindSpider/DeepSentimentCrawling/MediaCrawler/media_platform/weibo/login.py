@@ -69,16 +69,26 @@ class WeiboLogin(AbstractLogin):
     @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, no_logged_in_session: str, login_page_url: str = "") -> bool:
         """
-        Verify login status: URL redirect + QR disappearance + cookie checks.
+        Verify login status: active page refresh + URL redirect + cookie checks.
         """
-        # 0. URL redirect detection — passport.weibo.com → weibo.com
+        self._qr_check_count = getattr(self, '_qr_check_count', 0) + 1
+        cnt = self._qr_check_count
+
+        # Periodic active refresh to trigger post-login redirect
+        if cnt % 30 == 0 and cnt >= 30 and login_page_url:
+            utils.logger.info(f"[Weibo] Active refresh #{cnt // 30} — reloading page...")
+            try:
+                await self.context_page.goto(login_page_url, wait_until="domcontentloaded", timeout=15000)
+                await asyncio.sleep(2)
+            except Exception as e:
+                utils.logger.info(f"[Weibo] Refresh goto failed: {e}")
+
         if login_page_url:
             current_url = self.context_page.url
             if current_url != login_page_url and "passport.weibo.com" not in current_url:
                 utils.logger.info("[Weibo] Login confirmed by URL redirect")
                 return True
 
-        # 1. QR code disappeared (login dialog closed)
         try:
             qrcode_gone = not await self.context_page.is_visible(
                 "xpath=//img[@class='w-full h-full']", timeout=300
@@ -88,7 +98,6 @@ class WeiboLogin(AbstractLogin):
         except Exception:
             pass
 
-        # 2. Cookie checks
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
         if cookie_dict.get("SSOLoginState"):

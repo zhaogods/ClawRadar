@@ -95,7 +95,18 @@ class DouYinLogin(AbstractLogin):
     @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self):
         """Check if the current login status is successful and return True otherwise return False"""
-        # URL redirect detection (login page URL captured in begin/login_by_qrcode)
+        self._qr_check_count = getattr(self, '_qr_check_count', 0) + 1
+        cnt = self._qr_check_count
+
+        # Periodic active refresh to trigger post-login redirect
+        if cnt % 30 == 0 and cnt >= 30 and self._login_page_url:
+            utils.logger.info(f"[Douyin] Active refresh #{cnt // 30} — reloading page...")
+            try:
+                await self.context_page.goto(self._login_page_url, wait_until="domcontentloaded", timeout=15000)
+                await asyncio.sleep(2)
+            except Exception as e:
+                utils.logger.info(f"[Douyin] Refresh goto failed: {e}")
+
         if self._login_page_url:
             current_url = self.context_page.url
             if current_url != self._login_page_url:

@@ -61,8 +61,19 @@ class KuaishouLogin(AbstractLogin):
     @retry(stop=stop_after_attempt(120), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, login_page_url: str = "") -> bool:
         """
-        Verify login status: URL redirect + QR disappearance + cookie check.
+        Verify login status: active page refresh + URL redirect + cookie check.
         """
+        self._qr_check_count = getattr(self, '_qr_check_count', 0) + 1
+        cnt = self._qr_check_count
+
+        if cnt % 30 == 0 and cnt >= 30 and login_page_url:
+            utils.logger.info(f"[Kuaishou] Active refresh #{cnt // 30} — reloading page...")
+            try:
+                await self.context_page.goto(login_page_url, wait_until="domcontentloaded", timeout=15000)
+                await asyncio.sleep(2)
+            except Exception as e:
+                utils.logger.info(f"[Kuaishou] Refresh goto failed: {e}")
+
         if login_page_url:
             current_url = self.context_page.url
             if current_url != login_page_url and "login" not in current_url.lower():
