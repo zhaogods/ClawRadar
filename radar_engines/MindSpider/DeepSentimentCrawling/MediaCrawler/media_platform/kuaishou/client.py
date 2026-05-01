@@ -137,7 +137,7 @@ class KuaiShouClient(AbstractApiClient, ProxyRefreshMixin):
     async def update_cookies(self, browser_context: BrowserContext, urls: Optional[list[str]] = None):
         cookie_str, cookie_dict = await utils.convert_browser_context_cookies(
             browser_context,
-            urls=urls or self.cookie_urls,
+            urls=urls,
         )
         self.headers["Cookie"] = cookie_str
         self.cookie_dict = cookie_dict

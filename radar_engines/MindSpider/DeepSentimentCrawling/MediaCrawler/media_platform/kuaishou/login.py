@@ -80,6 +80,21 @@ class KuaishouLogin(AbstractLogin):
             utils.logger.info(f"[Kuaishou] API login verification failed: {e}")
             return False
 
+    async def _detect_confirmation_required(self) -> bool:
+        keywords = (
+            "确认登录",
+            "在手机上确认",
+            "请在手机上确认",
+            "安全验证",
+            "验证后登录",
+            "扫码成功",
+        )
+        try:
+            content = await self.context_page.content()
+        except Exception:
+            return False
+        return any(keyword in content for keyword in keywords)
+
     async def _log_post_scan_state(self, stage: str) -> None:
         try:
             current_url = self.context_page.url
@@ -208,12 +223,19 @@ class KuaishouLogin(AbstractLogin):
                 if await self.context_page.is_visible(selector, timeout=300):
                     login_btn_gone = False
                     break
-            if qrcode_gone or login_btn_gone:
-                utils.logger.info("[Kuaishou] QR/login button gone, checking signals...")
+            confirmation_required = await self._detect_confirmation_required()
+            if qrcode_gone or login_btn_gone or confirmation_required:
+                utils.logger.info("[Kuaishou] QR/login button changed, checking signals...")
                 await self._log_post_scan_state("ui_signals_changed")
                 cookie_dict = await self._get_cookie_dict()
                 if cookie_dict.get("passToken"):
                     utils.logger.info("[Kuaishou] Login confirmed by passToken cookie")
+                    return True
+                if cookie_dict.get("userId") and (
+                    cookie_dict.get("kuaishou.server.web_st")
+                    or cookie_dict.get("kuaishou.server.web_ph")
+                ):
+                    utils.logger.info("[Kuaishou] Login confirmed by userId + session cookies")
                     return True
                 user_selectors = [
                     "xpath=//div[contains(@class, 'user-info')]",
@@ -226,6 +248,8 @@ class KuaishouLogin(AbstractLogin):
                             return True
                     except Exception:
                         pass
+                if confirmation_required:
+                    utils.logger.info("[Kuaishou] QR scan completed but page still requires in-app confirmation or verification")
                 if self.api_login_checker:
                     utils.logger.info("[Kuaishou] Browser signals are weak, verifying login via API...")
                     await self._log_post_scan_state("before_api_verify")
@@ -238,6 +262,12 @@ class KuaishouLogin(AbstractLogin):
         cookie_dict = await self._get_cookie_dict()
         if cookie_dict.get("passToken"):
             utils.logger.info("[Kuaishou] Login confirmed by passToken cookie")
+            return True
+        if cookie_dict.get("userId") and (
+            cookie_dict.get("kuaishou.server.web_st")
+            or cookie_dict.get("kuaishou.server.web_ph")
+        ):
+            utils.logger.info("[Kuaishou] Login confirmed by userId + session cookies")
             return True
         return False
 

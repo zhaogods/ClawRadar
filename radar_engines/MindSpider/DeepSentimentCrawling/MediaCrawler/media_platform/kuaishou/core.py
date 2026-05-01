@@ -64,14 +64,12 @@ class KuaishouCrawler(AbstractCrawler):
     async def _refresh_and_verify_ks_login(self) -> bool:
         await self.ks_client.update_cookies(
             browser_context=self.browser_context,
-            urls=self.cookie_urls,
         )
         if await self.ks_client.pong():
             return True
         await asyncio.sleep(1)
         await self.ks_client.update_cookies(
             browser_context=self.browser_context,
-            urls=self.cookie_urls,
         )
         return await self.ks_client.pong()
 
@@ -323,7 +321,6 @@ class KuaishouCrawler(AbstractCrawler):
         )
         cookie_str, cookie_dict = await utils.convert_browser_context_cookies(
             self.browser_context,
-            urls=self.cookie_urls,
         )
         ks_client_obj = KuaiShouClient(
             proxy=httpx_proxy,

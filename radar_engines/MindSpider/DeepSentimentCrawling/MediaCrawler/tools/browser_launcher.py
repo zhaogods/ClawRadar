@@ -190,12 +190,24 @@ class BrowserLauncher:
 
     def wait_for_browser_ready(self, debug_port: int, timeout: int = 30) -> bool:
         """
-        Wait for browser to be ready
+        Wait for browser CDP endpoint to become ready.
         """
         utils.logger.info(f"[BrowserLauncher] Waiting for browser to be ready on port {debug_port}...")
 
         start_time = time.time()
+        last_process_state = None
         while time.time() - start_time < timeout:
+            if self.browser_process:
+                return_code = self.browser_process.poll()
+                if return_code is not None:
+                    utils.logger.error(
+                        f"[BrowserLauncher] Browser process exited before CDP became ready, return code: {return_code}"
+                    )
+                    return False
+                process_state = f"pid={self.browser_process.pid}"
+                if process_state != last_process_state:
+                    utils.logger.info(f"[BrowserLauncher] Browser process is running ({process_state})")
+                    last_process_state = process_state
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     s.settimeout(1)
