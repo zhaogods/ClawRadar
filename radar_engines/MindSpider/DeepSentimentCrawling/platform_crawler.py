@@ -393,15 +393,17 @@ postgres_db_config = {{
             )
             cdp_headless = _env_bool("CLAWRADAR_CDP_HEADLESS", False)
             cdp_debug_port = _env_int("CLAWRADAR_CDP_DEBUG_PORT", 9222)
+            cdp_remote_host = _env_str("CLAWRADAR_CDP_REMOTE_HOST", "127.0.0.1")
             cdp_custom_browser_path = _env_str("CLAWRADAR_CDP_CUSTOM_BROWSER_PATH", "")
 
             logger.info(
-                "CDP配置: enable=%s, connect_existing=%s, headless=%s, debug_port=%s, browser_path=%s"
+                "CDP配置: enable=%s, connect_existing=%s, headless=%s, debug_port=%s, remote_host=%s, browser_path=%s"
                 % (
                     enable_cdp_mode,
                     cdp_connect_existing,
                     cdp_headless,
                     cdp_debug_port,
+                    cdp_remote_host,
                     cdp_custom_browser_path or "auto-detect",
                 )
             )

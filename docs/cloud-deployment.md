@@ -153,6 +153,7 @@ export CLAWRADAR_ENABLE_CDP_MODE=1
 export CLAWRADAR_CDP_CONNECT_EXISTING=0
 export CLAWRADAR_CDP_HEADLESS=0
 export CLAWRADAR_CDP_DEBUG_PORT=9222
+export CLAWRADAR_CDP_REMOTE_HOST=127.0.0.1
 export CLAWRADAR_CDP_CUSTOM_BROWSER_PATH=/usr/bin/google-chrome
 ```
 
@@ -163,6 +164,7 @@ export CLAWRADAR_CDP_CUSTOM_BROWSER_PATH=/usr/bin/google-chrome
 - `CLAWRADAR_CDP_CONNECT_EXISTING=0`：默认由程序拉起服务器本机的真实 Chrome
 - `CLAWRADAR_CDP_HEADLESS=0`：配合 Xvfb 使用可见界面，便于扫码和登录态沉淀
 - `CLAWRADAR_CDP_DEBUG_PORT=9222`：Chrome 远程调试端口
+- `CLAWRADAR_CDP_REMOTE_HOST=127.0.0.1`：CDP 连接目标主机；本机 Chrome 用 `127.0.0.1`，远程 Windows Chrome 用其局域网 IP
 - `CLAWRADAR_CDP_CUSTOM_BROWSER_PATH=/usr/bin/google-chrome`：显式指定 Chrome 路径
 
 ## 运行方式
@@ -231,6 +233,50 @@ google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-cdp
 ```
 
 这更适合调试，不建议作为正式长期运行方案。
+
+## 通过远程 Windows Chrome 连接 CDP
+
+如果你已经有一台 24 小时可用的 Windows 机器，并希望 Ubuntu 侧直接复用那台机器上的真实 Chrome，可以改用远程 CDP 连接模式。
+
+### Windows 侧启动 Chrome
+
+```powershell
+chrome.exe --remote-debugging-address=0.0.0.0 --remote-debugging-port=9222 --user-data-dir=C:\chrome-cdp
+```
+
+如果是从 Ubuntu 访问这台 Windows 机器，请确保：
+
+- Windows 防火墙放行 `9222` 端口
+- Ubuntu 能访问 `http://<windows-ip>:9222/json/version`
+- Chrome 已经以带远程调试参数的方式启动
+
+### Ubuntu 侧配置
+
+```bash
+export CLAWRADAR_SERVER_MODE=1
+export CLAWRADAR_ENABLE_CDP_MODE=1
+export CLAWRADAR_CDP_CONNECT_EXISTING=1
+export CLAWRADAR_CDP_REMOTE_HOST=<windows-ip>
+export CLAWRADAR_CDP_DEBUG_PORT=9222
+```
+
+这时 `CDP_CONNECT_EXISTING=1` 表示连接已经运行着的 Windows Chrome，`CDP_REMOTE_HOST` 指定远程主机地址，`CDP_DEBUG_PORT` 指定 Chrome 暴露的调试端口。
+
+### 连接验证
+
+先在 Ubuntu 上验证能直接访问版本接口：
+
+```bash
+curl http://<windows-ip>:9222/json/version
+```
+
+如果能返回 `webSocketDebuggerUrl`，说明远程 CDP 已经可用。
+
+### 推荐使用场景
+
+- Ubuntu 本机的 Chrome / Xvfb / CDP 启动不稳定
+- 你想复用 Windows 上已经沉淀好的浏览器 profile 和登录态
+- 你愿意把浏览器执行端固定在 Windows，Ubuntu 只负责调度和采集
 
 ## 二维码查看方式
 

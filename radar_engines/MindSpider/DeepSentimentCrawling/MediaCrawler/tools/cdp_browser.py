@@ -149,8 +149,12 @@ class CDPBrowserManager:
         or launch Chrome with --remote-debugging-port flag.
         """
         self.debug_port = config.CDP_DEBUG_PORT
+        remote_host = os.environ.get(
+            "CLAWRADAR_CDP_REMOTE_HOST",
+            getattr(config, "CDP_REMOTE_HOST", "127.0.0.1"),
+        )
         utils.logger.info(
-            f"[CDPBrowserManager] Connecting to existing browser on port {self.debug_port}..."
+            f"[CDPBrowserManager] Connecting to existing browser on {remote_host}:{self.debug_port}..."
         )
         utils.logger.info(
             "[CDPBrowserManager] Make sure remote debugging is enabled in your browser: "
@@ -165,23 +169,24 @@ class CDPBrowserManager:
         )
         connected = False
         for i in range(timeout):
-            if await self._test_cdp_connection(self.debug_port):
+            if await self._test_cdp_connection(self.debug_port, host=remote_host):
                 connected = True
                 break
             if i % 5 == 0 and i > 0:
                 utils.logger.info(
                     f"[CDPBrowserManager] Still waiting for browser... ({i}s elapsed) "
-                    "Please enable remote debugging: chrome://inspect/#remote-debugging"
+                    f"Please enable remote debugging on {remote_host}:{self.debug_port}"
                 )
             await asyncio.sleep(1)
 
         if not connected:
             raise RuntimeError(
-                f"Cannot connect to existing browser on port {self.debug_port} "
+                f"Cannot connect to existing browser on {remote_host}:{self.debug_port} "
                 f"after waiting {timeout}s. Please ensure:\n"
                 "  1. Your browser is running\n"
                 "  2. Remote debugging is enabled (chrome://inspect/#remote-debugging)\n"
-                f"  3. The debug port is {self.debug_port} (configure via CDP_DEBUG_PORT)"
+                f"  3. The debug port is {self.debug_port} (configure via CDP_DEBUG_PORT)\n"
+                f"  4. The remote host is reachable (configure via CDP_REMOTE_HOST, current={remote_host})"
             )
 
         # Connect via CDP (reuse existing method)
@@ -224,7 +229,7 @@ class CDPBrowserManager:
 
         return browser_path
 
-    async def _test_cdp_connection(self, debug_port: int) -> bool:
+    async def _test_cdp_connection(self, debug_port: int, host: str = "localhost") -> bool:
         """
         Test if CDP connection is available
         """
@@ -232,15 +237,15 @@ class CDPBrowserManager:
             # Simple socket connection test
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(5)
-                result = s.connect_ex(("localhost", debug_port))
+                result = s.connect_ex((host, debug_port))
                 if result == 0:
                     utils.logger.info(
-                        f"[CDPBrowserManager] CDP port {debug_port} is accessible"
+                        f"[CDPBrowserManager] CDP port {host}:{debug_port} is accessible"
                     )
                     return True
                 else:
                     utils.logger.warning(
-                        f"[CDPBrowserManager] CDP port {debug_port} is not accessible"
+                        f"[CDPBrowserManager] CDP port {host}:{debug_port} is not accessible"
                     )
                     return False
         except Exception as e:
@@ -285,14 +290,14 @@ class CDPBrowserManager:
                 "[CDPBrowserManager] CDP connection test failed, but will continue to try connecting"
             )
 
-    async def _get_browser_websocket_url(self, debug_port: int) -> str:
+    async def _get_browser_websocket_url(self, debug_port: int, host: str = "localhost") -> str:
         """
         Get browser WebSocket connection URL
         """
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"http://localhost:{debug_port}/json/version", timeout=10
+                    f"http://{host}:{debug_port}/json/version", timeout=10
                 )
                 if response.status_code == 200:
                     data = response.json()
@@ -316,17 +321,34 @@ class CDPBrowserManager:
         """
         try:
             if config.CDP_CONNECT_EXISTING:
-                # For existing browser (e.g. chrome://inspect/#remote-debugging),
-                # Chrome exposes a WebSocket at /devtools/browser and may show a confirmation
-                # dialog to the user. Use ws:// with a longer timeout to wait for user confirmation.
-                ws_url = f"ws://localhost:{self.debug_port}/devtools/browser"
-                utils.logger.info(f"[CDPBrowserManager] Connecting to existing browser via CDP: {ws_url}")
+                remote_host = os.environ.get(
+                    "CLAWRADAR_CDP_REMOTE_HOST",
+                    getattr(config, "CDP_REMOTE_HOST", "127.0.0.1"),
+                )
+                ws_url = f"ws://{remote_host}:{self.debug_port}/devtools/browser"
+                utils.logger.info(
+                    f"[CDPBrowserManager] Connecting to existing browser via CDP: {ws_url}"
+                )
                 utils.logger.info(
                     "[CDPBrowserManager] Please check your browser for a confirmation dialog and accept it"
                 )
-                self.browser = await playwright.chromium.connect_over_cdp(
-                    ws_url, timeout=config.BROWSER_LAUNCH_TIMEOUT * 1000
-                )
+                try:
+                    self.browser = await playwright.chromium.connect_over_cdp(
+                        ws_url, timeout=config.BROWSER_LAUNCH_TIMEOUT * 1000
+                    )
+                except Exception as first_error:
+                    utils.logger.warning(
+                        f"[CDPBrowserManager] Direct WS connect failed, retrying via /json/version: {first_error}"
+                    )
+                    version_ws_url = await self._get_browser_websocket_url(
+                        self.debug_port, host=remote_host
+                    )
+                    utils.logger.info(
+                        f"[CDPBrowserManager] Retrying existing browser via CDP: {version_ws_url}"
+                    )
+                    self.browser = await playwright.chromium.connect_over_cdp(
+                        version_ws_url, timeout=config.BROWSER_LAUNCH_TIMEOUT * 1000
+                    )
             else:
                 # For launched browser, get WebSocket URL first
                 ws_url = await self._get_browser_websocket_url(self.debug_port)

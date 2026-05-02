@@ -199,6 +199,7 @@ def _apply_deep_crawl_env(dc_config: dict) -> None:
         "cdp_connect_existing": "CLAWRADAR_CDP_CONNECT_EXISTING",
         "cdp_headless": "CLAWRADAR_CDP_HEADLESS",
         "cdp_debug_port": "CLAWRADAR_CDP_DEBUG_PORT",
+        "cdp_remote_host": "CLAWRADAR_CDP_REMOTE_HOST",
         "cdp_custom_browser_path": "CLAWRADAR_CDP_CUSTOM_BROWSER_PATH",
     }
 
@@ -535,6 +536,7 @@ def _collect_deep_crawl_args() -> dict | None:
     cdp_connect_existing = False
     cdp_headless = False
     cdp_debug_port = 9222
+    cdp_remote_host = "127.0.0.1"
     cdp_custom_browser_path = ""
 
     if enable_cdp_mode:
@@ -548,17 +550,25 @@ def _collect_deep_crawl_args() -> dict | None:
             ],
             default_index=2 if not server_mode else 1,
         )
-        cdp_custom_browser_path = _prompt_text(
-            "deep_crawl_cdp_custom_browser_path",
-            "Chrome 可执行路径；留空时自动探测。Ubuntu 常见为 /usr/bin/google-chrome。",
-            default="/usr/bin/google-chrome" if server_mode else "",
-        )
+        if not cdp_connect_existing:
+            cdp_custom_browser_path = _prompt_text(
+                "deep_crawl_cdp_custom_browser_path",
+                "Chrome 可执行路径；留空时自动探测。Ubuntu 常见为 /usr/bin/google-chrome。",
+                default="/usr/bin/google-chrome" if server_mode else "",
+            )
         cdp_debug_port = _prompt_int(
             "deep_crawl_cdp_debug_port",
             "CDP 调试端口。",
             default=9222,
             minimum=1,
         )
+        if cdp_connect_existing:
+            cdp_remote_host = _prompt_text(
+                "deep_crawl_cdp_remote_host",
+                "CDP 目标主机；远程 Windows Chrome 请填写其 IP 或主机名。",
+                default="127.0.0.1",
+                required=True,
+            )
         cdp_headless = _prompt_menu(
             "deep_crawl_cdp_headless",
             "是否启用 CDP headless？配合 Xvfb 的服务器正式方案通常建议关闭。",
@@ -600,6 +610,7 @@ def _collect_deep_crawl_args() -> dict | None:
         "cdp_connect_existing": cdp_connect_existing,
         "cdp_headless": cdp_headless,
         "cdp_debug_port": cdp_debug_port,
+        "cdp_remote_host": cdp_remote_host,
         "cdp_custom_browser_path": cdp_custom_browser_path,
     }
 
