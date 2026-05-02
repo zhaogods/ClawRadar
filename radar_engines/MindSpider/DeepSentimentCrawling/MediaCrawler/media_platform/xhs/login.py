@@ -49,7 +49,7 @@ class XiaoHongShuLogin(AbstractLogin):
         self.login_phone = login_phone
         self.cookie_str = cookie_str
 
-    @retry(stop=stop_after_attempt(180), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
+    @retry(stop=stop_after_attempt(config.QR_LOGIN_WAIT_SECONDS), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, no_logged_in_session: str, login_page_url: str = "") -> bool:
         """
         Verify login status using multi-signal detection + active page refresh.
@@ -365,7 +365,7 @@ class XiaoHongShuLogin(AbstractLogin):
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
         asyncio.get_running_loop().run_in_executor(executor=None, func=partial_show_qrcode)
 
-        utils.logger.info(f"[XiaoHongShuLogin.login_by_qrcode] waiting for scan code login, remaining time is 180s")
+        utils.logger.info(f"[XiaoHongShuLogin.login_by_qrcode] waiting for scan code login, remaining time is {config.QR_LOGIN_WAIT_SECONDS}s")
         try:
             await self.check_login_state(no_logged_in_session, login_page_url)
         except RetryError:

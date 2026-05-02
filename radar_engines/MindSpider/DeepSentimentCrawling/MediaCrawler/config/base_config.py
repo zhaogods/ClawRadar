@@ -46,6 +46,9 @@ HEADLESS = False
 # Whether to save login status
 SAVE_LOGIN_STATE = True
 
+# 二维码扫码登录等待时间（秒）
+QR_LOGIN_WAIT_SECONDS = 180
+
 # ==================== CDP (Chrome DevTools Protocol) 配置 ====================
 # 是否启用 CDP 模式 - 使用用户本地的 Chrome/Edge 浏览器进行爬取，具有更好的反检测能力
 # 开启后，会自动检测并启动用户的 Chrome/Edge 浏览器，通过 CDP 协议进行控制

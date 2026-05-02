@@ -92,7 +92,7 @@ class DouYinLogin(AbstractLogin):
         utils.logger.info(f"[DouYinLogin.begin] Login successful then wait for {wait_redirect_seconds} seconds redirect ...")
         await asyncio.sleep(wait_redirect_seconds)
 
-    @retry(stop=stop_after_attempt(180), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
+    @retry(stop=stop_after_attempt(config.QR_LOGIN_WAIT_SECONDS), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self):
         """Check if the current login status is successful and return True otherwise return False
 

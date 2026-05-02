@@ -70,7 +70,7 @@ class BilibiliLogin(AbstractLogin):
             raise ValueError(
                 "[BilibiliLogin.begin] Invalid Login Type Currently only supported qrcode or phone or cookie ...")
 
-    @retry(stop=stop_after_attempt(180), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
+    @retry(stop=stop_after_attempt(config.QR_LOGIN_WAIT_SECONDS), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
     async def check_login_state(self, login_page_url: str = "") -> bool:
         """
         Verify login status: active page refresh + URL redirect + cookie checks.
@@ -152,7 +152,7 @@ class BilibiliLogin(AbstractLogin):
         partial_show_qrcode = functools.partial(utils.show_qrcode, base64_qrcode_img)
         asyncio.get_running_loop().run_in_executor(executor=None, func=partial_show_qrcode)
 
-        utils.logger.info(f"[BilibiliLogin.login_by_qrcode] Waiting for scan code login, remaining time is 180s")
+        utils.logger.info(f"[BilibiliLogin.login_by_qrcode] Waiting for scan code login, remaining time is {config.QR_LOGIN_WAIT_SECONDS}s")
         try:
             await self.check_login_state(login_page_url)
         except RetryError:
