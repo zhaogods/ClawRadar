@@ -489,14 +489,19 @@ def _collect_notification_args() -> argparse.Namespace:
 # ─────────────── deep crawl config ───────────────
 
 def _collect_deep_crawl_args() -> dict | None:
+    default_remote_host = str(os.environ.get("CLAWRADAR_CDP_REMOTE_HOST", "192.168.10.2") or "192.168.10.2").strip() or "192.168.10.2"
+    default_remote_port = str(os.environ.get("CLAWRADAR_CDP_DEBUG_PORT", "9223") or "9223").strip()
+    if not default_remote_port.isdigit():
+        default_remote_port = "9223"
+
     enabled = _prompt_menu(
         "deep_crawl_enabled",
-        "是否启用社媒深爬（DeepSentimentCrawling）？首次使用会自动建表，需已配置 .env 数据库和 Playwright。",
+        "是否启用社媒深爬（DeepSentimentCrawling）？正式流程默认开启，并将复用数据库关键词与远程浏览器配置。",
         [
             (False, "否", "跳过深爬阶段，仅使用基础热点搜索。"),
             (True, "是", "启用深爬阶段，从数据库取关键词在指定平台深度搜索。"),
         ],
-        default_index=1,
+        default_index=2,
     )
     if not enabled:
         return None
@@ -514,41 +519,41 @@ def _collect_deep_crawl_args() -> dict | None:
     auto_server = _sys.platform == "linux" and not os.environ.get("DISPLAY")
     server_mode = _prompt_menu(
         "deep_crawl_server_mode",
-        "是否运行在 Linux 云服务器（无物理显示器）？"
+        "是否按服务器正式部署模式运行（Linux 调度端 + 远程/真实 Chrome）？"
         + ("（自动检测：是）" if auto_server else "（自动检测：否）"),
         [
-            (True, "是", "云服务器，自动启动 Xvfb 虚拟显示。正式方案推荐 Ubuntu + 真实 Chrome + CDP。"),
-            (False, "否", "本地 GUI 环境，浏览器有物理显示器，无需 Xvfb。"),
+            (True, "是", "服务器正式模式，按 Ubuntu + 远程 CDP / 真实 Chrome 路径运行。"),
+            (False, "否", "本地 GUI 调试模式，浏览器直接在当前机器显示。"),
         ],
-        default_index=1 if auto_server else 2,
+        default_index=1,
     )
 
     enable_cdp_mode = _prompt_menu(
         "deep_crawl_enable_cdp_mode",
-        "是否启用 CDP 真实浏览器模式？Ubuntu 服务器正式方案推荐开启；该启动器只收集参数，不负责安装 Chrome/Xvfb。",
+        "是否启用 CDP 真实浏览器模式？正式部署默认开启，并优先连接远程 Windows Chrome。",
         [
             (True, "启用", "使用真实 Chrome/Edge，通过 CDP 建立连接，更适合服务器长期运行和登录态复用。"),
             (False, "禁用", "退回标准 Playwright 浏览器模式，仅适合本地调试或兼容性排查。"),
         ],
-        default_index=1 if server_mode else 2,
+        default_index=1,
     )
 
     cdp_connect_existing = False
     cdp_headless = False
-    cdp_debug_port = 9222
-    cdp_remote_host = "127.0.0.1"
+    cdp_debug_port = int(default_remote_port)
+    cdp_remote_host = default_remote_host
     cdp_custom_browser_path = ""
 
     if enable_cdp_mode:
-        print("  正式服务器推荐：Ubuntu + 真实 Chrome + Xvfb + CDP，默认由程序拉起本机 Chrome 并沉淀登录态。")
+        print("  正式服务器默认：Ubuntu 调度端连接远程 Windows Chrome；如需回退，才切换为本机自启动 Chrome。")
         cdp_connect_existing = _prompt_menu(
             "deep_crawl_cdp_connect_existing",
-            "是否连接已手动启动的 Chrome 实例？通常仅用于调试或人工接管。",
+            "是否连接已存在的远程 Chrome 实例？正式部署默认使用远程 Windows Chrome + CDP。",
             [
-                (False, "否", "正式部署推荐。由程序在服务器本机拉起真实 Chrome，并复用服务器本机 profile。"),
-                (True, "是", "连接一个你已手动启动并开启远程调试端口的 Chrome 实例。"),
+                (True, "是", "正式部署推荐。连接已开启远程调试端口的远程 Chrome 实例。"),
+                (False, "否", "改为由程序在当前机器拉起本机 Chrome，仅用于回退排查。"),
             ],
-            default_index=2 if not server_mode else 1,
+            default_index=1,
         )
         if not cdp_connect_existing:
             cdp_custom_browser_path = _prompt_text(
@@ -558,22 +563,22 @@ def _collect_deep_crawl_args() -> dict | None:
             )
         cdp_debug_port = _prompt_int(
             "deep_crawl_cdp_debug_port",
-            "CDP 调试端口。",
-            default=9222,
+            "CDP 调试端口。远程 Windows 端口转发场景通常使用 9223。",
+            default=int(default_remote_port),
             minimum=1,
         )
         if cdp_connect_existing:
             cdp_remote_host = _prompt_text(
                 "deep_crawl_cdp_remote_host",
-                "CDP 目标主机；远程 Windows Chrome 请填写其 IP 或主机名。",
-                default="127.0.0.1",
+                "CDP 目标主机；默认走远程 Windows Chrome 的内网地址。",
+                default=default_remote_host,
                 required=True,
             )
         cdp_headless = _prompt_menu(
             "deep_crawl_cdp_headless",
-            "是否启用 CDP headless？配合 Xvfb 的服务器正式方案通常建议关闭。",
+            "是否启用 CDP headless？配合远程 Windows Chrome 或 Xvfb 的正式方案通常建议关闭。",
             [
-                (False, "否", "推荐。通过 Xvfb 提供可见界面，更利于扫码和登录态沉淀。"),
+                (False, "否", "推荐。保留可见界面，更利于扫码和登录态沉淀。"),
                 (True, "是", "仅在你明确需要纯无界面调试时启用。"),
             ],
             default_index=1,
@@ -667,7 +672,7 @@ def _collect_run_args() -> argparse.Namespace:
     summary = ""
     keywords: list[str] = []
     source_ids = list(DEFAULT_REAL_SOURCE_IDS)
-    persist = False
+    persist = True
 
     if input_mode == "real_source":
         source_ids = _prompt_multi_menu(
@@ -679,12 +684,12 @@ def _collect_run_args() -> argparse.Namespace:
         )
         persist = _prompt_menu(
             "persist",
-            "是否持久化热点数据到数据库（用于后续深爬关键词提取）？首次自动建表。",
+            "是否持久化热点数据到数据库（用于后续深爬关键词提取）？正式流程默认开启，首次会自动建表。",
             [
                 (False, "否", "不持久化，仅用本次采集结果。"),
                 (True, "是", "持久化到数据库，首次自动建表，供后续深爬使用。"),
             ],
-            default_index=1,
+            default_index=2,
         )
     else:
         topic = _prompt_text("topic", "主题名称，用于驱动检索与写作。", required=True)
