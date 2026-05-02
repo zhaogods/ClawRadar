@@ -18,14 +18,14 @@
 # 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
 
 # Basic configuration
-PLATFORM = "dy"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
+PLATFORM = "tieba"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
 
 # 是否使用海外版小红书 (rednote.com)
 # 开启后 API 走 webapi.rednote.com，cookie 域使用 .rednote.com
 XHS_INTERNATIONAL = False
 
-KEYWORDS = "五一假期,鸿蒙智行,南开大学,特朗普,伊朗战争,莫氏鸡煲,票房,交付量,AI,机器人,新能源汽车,游戏,演唱会,浪姐,NBA季后赛,民宿毁约,数据造假,高股息,人形机器人,电池,中成药集采,OpenAI"  # 关键词搜索配置，以英文逗号分隔
-LOGIN_TYPE = "cookie"
+KEYWORDS = "火车坐过站免费返回,中小学生用语,黄金涨幅,电动汽车,喂牛视频被冒用,越剑智能,宜安科技定增,孙杨内涵,拉拉科技上市,英国央行利率,月子里宝宝打耳洞,LG新能源亏损,国防部发言人,办公室异性午休,日本战败国身份,软银AI上市,康龙化成,爱的教育评价,玩具枪获刑,走私石墨,联合水务减持,有线耳机,28岁攒10万辞职,软银AI,LG新能源,办公室午休,爱的教育,康龙化成减持,晚饭不吃减肥,AI编程差距,捡到手机丢弃被判赔,新荷花,跑男老来得子,中国女孩拍摄靖国神社,有线耳机复古,岳云鹏减肥,拉拉科技,存款被转,科蓝软件立案,五粮液拟回购股份,CORTIS一位,学生票一年四次,面试offer,宝光股份氦气,电影撤档五一,李小冉告过的博主,电动汽车燃煤车论,宁德时代,学生票需求,美联储分歧"  # 关键词搜索配置，以英文逗号分隔
+LOGIN_TYPE = "qrcode"
 COOKIES = ""
 CRAWLER_TYPE = "search"  # 爬取类型，search(关键词搜索) | detail(帖子详情)| creator(创作者主页数据)
 # Whether to enable IP proxy
@@ -52,14 +52,10 @@ SAVE_LOGIN_STATE = True
 # 该方式使用真实浏览器环境，包括用户的扩展、Cookie 和设置，大幅降低被风控检测的风险
 ENABLE_CDP_MODE = False
 
-# CDP 失败后是否自动回退到标准 Playwright 模式
-# 交互启动器默认关闭该回退，以便直接暴露真实的 CDP 连接问题
-CDP_FALLBACK_TO_STANDARD = True
-
 # ==================== 无头服务器模式 ====================
 # 在云服务器等无 GUI 环境运行时启用。
 # 启用后：Playwright 启动时添加 --no-sandbox --disable-dev-shm-usage 参数。
-SERVER_MODE = False
+SERVER_MODE = True
 
 # CDP 调试端口，用于与浏览器通信
 # 如果端口被占用，系统会自动尝试下一个可用端口
