@@ -1,11 +1,16 @@
+import contextlib
 import importlib.util
+import io
 import json
+import logging
 import unittest
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+
+import start
 
 from clawradar.contracts import normalize_ingest_payload
 from clawradar.orchestrator import OrchestratorErrorCode, OrchestratorTriggerSource, topic_radar_orchestrate
@@ -1207,30 +1212,119 @@ class ClawRadarAutomationTestCase(unittest.TestCase):
         self.assertEqual(result["stage_results"]["ingest"]["real_source_context"]["provider"], "mindspider_broad_topic_today_news")
         self.assertEqual(result["stage_results"]["score"]["real_source_context"]["applied_source_ids"], ["weibo"])
 
-    def test_entry_options_real_source_falls_back_by_strategy(self):
+    def test_deep_crawl_partial_platform_success_marks_stage_succeeded(self):
         payload = self._build_publish_ready_pipeline_payload()
         payload["entry_options"] = {
-            "input": {"mode": "real_source"},
             "write": {"enabled": False},
-            "degrade": {"input_unavailable": "fallback_inline_candidates"},
+            "deep_crawl": {
+                "enabled": True,
+                "platforms": ["xhs", "dy"],
+                "max_keywords": 5,
+                "max_notes": 10,
+            }
+        }
+        deep_crawl_result = {
+            "success": True,
+            "error": None,
+            "platforms_attempted": ["xhs", "dy"],
+            "successful_platforms": ["xhs"],
+            "failed_platforms": ["dy"],
+            "platform_summary": {
+                "xhs": {"successful_keywords": 2, "failed_keywords": 0, "total_notes": 6, "total_comments": 12},
+                "dy": {"successful_keywords": 0, "failed_keywords": 2, "total_notes": 0, "total_comments": 0},
+            },
+            "summary": {
+                "total_tasks": 4,
+                "successful_tasks": 2,
+                "failed_tasks": 2,
+                "total_notes": 6,
+            },
         }
 
-        with patch(
-            "clawradar.orchestrator.load_real_source_payload",
-            side_effect=RealSourceUnavailableError("MindSpider unavailable"),
-        ):
+        with patch("clawradar.real_source._run_deep_sentiment_crawling", return_value=deep_crawl_result):
             result = topic_radar_orchestrate(payload)
 
-        self.assertEqual(result["run_status"], "completed")
-        self.assertEqual(result["final_stage"], "score")
-        self.assertEqual(result["entry_resolution"]["input"]["effective_mode"], "inline_candidates")
-        self.assertFalse(result["entry_resolution"]["input"]["real_source_loaded"])
-        self.assertTrue(result["entry_resolution"]["degrade"]["fallback_triggered"])
-        self.assertEqual(result["entry_resolution"]["degrade"]["fallbacks"][0]["category"], "input")
-        self.assertEqual(result["entry_resolution"]["degrade"]["fallbacks"][0]["requested"], "real_source")
-        self.assertEqual(result["entry_resolution"]["degrade"]["fallbacks"][0]["applied"], "inline_candidates")
+        self.assertEqual(result["decision_status"], ScoreDecisionStatus.PUBLISH_READY.value)
+        self.assertEqual(result["stage_statuses"]["deep_crawl"]["status"], "succeeded")
+        self.assertEqual(result["stage_statuses"]["deep_crawl"]["summary"]["successful_platforms"], ["xhs"])
+        self.assertEqual(result["stage_statuses"]["deep_crawl"]["summary"]["failed_platforms"], ["dy"])
+        self.assertEqual(result["run_summary"]["deep_crawl_applied"], True)
+        self.assertEqual(result["run_summary"]["deep_crawl_successful_platforms"], ["xhs"])
+        self.assertEqual(result["run_summary"]["deep_crawl_failed_platforms"], ["dy"])
+        self.assertEqual(result["event_statuses"][0]["deep_crawl_status"], "succeeded")
+        self.assertEqual(result["event_statuses"][0]["artifact_summary"]["deep_crawl_successful_platforms"], ["xhs"])
+        self.assertEqual(result["event_statuses"][0]["artifact_summary"]["deep_crawl_failed_platforms"], ["dy"])
+        self.assertEqual(result["event_statuses"][0]["artifact_summary"]["deep_crawl_total_notes"], 6)
+        self.assertEqual(result["event_statuses"][0]["write_status"], "skipped")
+        self.assertEqual(result["event_statuses"][0]["deliver_status"], "skipped")
 
-    def test_entry_options_real_source_without_degrade_fails_explicitly(self):
+    def test_deep_crawl_without_usable_notes_stays_failed(self):
+        payload = self._build_publish_ready_pipeline_payload()
+        payload["entry_options"] = {
+            "write": {"enabled": False},
+            "deep_crawl": {
+                "enabled": True,
+                "platforms": ["xhs"],
+            }
+        }
+        deep_crawl_result = {
+            "success": False,
+            "error": "deep crawl produced no usable content",
+            "platforms_attempted": ["xhs"],
+            "successful_platforms": [],
+            "failed_platforms": ["xhs"],
+            "platform_summary": {
+                "xhs": {"successful_keywords": 1, "failed_keywords": 0, "total_notes": 0, "total_comments": 0},
+            },
+            "summary": {
+                "total_tasks": 1,
+                "successful_tasks": 1,
+                "failed_tasks": 0,
+                "total_notes": 0,
+            },
+        }
+
+        with patch("clawradar.real_source._run_deep_sentiment_crawling", return_value=deep_crawl_result):
+            result = topic_radar_orchestrate(payload)
+
+        self.assertEqual(result["stage_statuses"]["deep_crawl"]["status"], "failed")
+        self.assertEqual(result["run_summary"]["deep_crawl_applied"], False)
+        self.assertEqual(result["run_summary"]["deep_crawl_notes_count"], 0)
+        self.assertEqual(result["event_statuses"][0]["deep_crawl_status"], "failed")
+        self.assertEqual(result["event_statuses"][0]["write_status"], "skipped")
+        self.assertEqual(result["event_statuses"][0]["deliver_status"], "skipped")
+
+    def test_runtime_output_buffer_captures_logging_and_exposes_stream_shape(self):
+        logger = logging.getLogger("tests.runtime_output_buffer")
+        previous_handlers = list(logger.handlers)
+        previous_level = logger.level
+        previous_propagate = logger.propagate
+        logger.handlers = []
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+        handler_stream = io.StringIO()
+        handler = logging.StreamHandler(handler_stream)
+        handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
+        logger.addHandler(handler)
+
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                with start._runtime_output_buffer("concise") as buffer:
+                    logger.info("buffer-log-line")
+                    print("报告生成完成")
+            captured = buffer.getvalue()
+        finally:
+            logger.handlers = previous_handlers
+            logger.setLevel(previous_level)
+            logger.propagate = previous_propagate
+
+        self.assertIn("INFO:buffer-log-line", captured)
+        self.assertIn("报告生成完成", captured)
+        self.assertEqual(buffer.encoding, getattr(start.sys.__stdout__, "encoding", None) or "utf-8")
+        self.assertTrue(buffer.writable())
+        self.assertIsInstance(buffer.isatty(), bool)
+
+    def test_entry_options_real_source_falls_back_by_strategy(self):
         payload = self._build_publish_ready_pipeline_payload()
         payload["entry_options"] = {
             "input": {"mode": "real_source"},

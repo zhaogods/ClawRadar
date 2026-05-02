@@ -93,6 +93,14 @@ class _RuntimeLogBuffer:
         self._visible_stream = visible_stream or sys.__stdout__
         self._header_printed = False
 
+    @property
+    def encoding(self) -> str:
+        return getattr(self._visible_stream, "encoding", None) or "utf-8"
+
+    @property
+    def errors(self) -> str:
+        return getattr(self._visible_stream, "errors", None) or "replace"
+
     def write(self, text: str) -> int:
         if not text:
             return 0
@@ -107,6 +115,24 @@ class _RuntimeLogBuffer:
     def flush(self) -> None:
         if hasattr(self._visible_stream, "flush"):
             self._visible_stream.flush()
+
+    def isatty(self) -> bool:
+        stream_isatty = getattr(self._visible_stream, "isatty", None)
+        if callable(stream_isatty):
+            try:
+                return bool(stream_isatty())
+            except Exception:
+                return False
+        return False
+
+    def writable(self) -> bool:
+        return True
+
+    def fileno(self) -> int:
+        stream_fileno = getattr(self._visible_stream, "fileno", None)
+        if callable(stream_fileno):
+            return int(stream_fileno())
+        raise OSError("visible stream does not expose fileno")
 
     def finalize(self) -> None:
         if self._show_writing_logs and self._line_buffer:
@@ -131,6 +157,21 @@ def _should_show_concise_log_line(line: str) -> bool:
     if not stripped:
         return False
     return any(keyword in stripped for keyword in CONCISE_WRITING_LOG_KEYWORDS)
+
+
+def _ensure_utf8_console_streams() -> None:
+    seen_streams: set[int] = set()
+    for stream_name in ("stdout", "stderr", "__stdout__", "__stderr__"):
+        stream = getattr(sys, stream_name, None)
+        if stream is None or id(stream) in seen_streams:
+            continue
+        seen_streams.add(id(stream))
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
 
 
 # ─────────────── prompt helpers ───────────────
@@ -201,6 +242,7 @@ def _apply_deep_crawl_env(dc_config: dict) -> None:
         "cdp_debug_port": "CLAWRADAR_CDP_DEBUG_PORT",
         "cdp_remote_host": "CLAWRADAR_CDP_REMOTE_HOST",
         "cdp_custom_browser_path": "CLAWRADAR_CDP_CUSTOM_BROWSER_PATH",
+        "cdp_fallback_to_standard": "CLAWRADAR_CDP_FALLBACK_TO_STANDARD",
     }
 
     for config_key, env_name in env_mappings.items():
@@ -288,9 +330,9 @@ def _runtime_output_buffer(log_mode: str) -> Iterator[_RuntimeLogBuffer]:
         yield buffer
         return
 
-    previous_disable = logging.root.manager.disable
     loguru_logger = None
     loguru_sink_ids: list[int] = []
+    redirected_handlers: list[tuple[logging.Handler, Any]] = []
     try:
         from loguru import logger as imported_logger
 
@@ -300,13 +342,25 @@ def _runtime_output_buffer(log_mode: str) -> Iterator[_RuntimeLogBuffer]:
     except Exception:
         loguru_logger = None
 
-    logging.disable(logging.CRITICAL)
+    root_logger = logging.getLogger()
+    for logger_name in list(logging.root.manager.loggerDict.keys()):
+        candidate = logging.getLogger(logger_name)
+        for handler in getattr(candidate, "handlers", []):
+            if isinstance(handler, logging.StreamHandler):
+                redirected_handlers.append((handler, handler.stream))
+                handler.setStream(buffer)
+    for handler in getattr(root_logger, "handlers", []):
+        if isinstance(handler, logging.StreamHandler) and all(existing_handler is not handler for existing_handler, _ in redirected_handlers):
+            redirected_handlers.append((handler, handler.stream))
+            handler.setStream(buffer)
+
     try:
         with redirect_stdout(buffer), redirect_stderr(buffer):
             yield buffer
     finally:
         buffer.finalize()
-        logging.disable(previous_disable)
+        for handler, stream in redirected_handlers:
+            handler.setStream(stream)
         if loguru_logger is not None:
             for sink_id in loguru_sink_ids:
                 loguru_logger.remove(sink_id)
@@ -326,12 +380,16 @@ def _print_event_overview(result: dict[str, Any]) -> None:
     for index, event in enumerate(event_statuses, start=1):
         print(f"{index}. {event.get('event_title') or event.get('event_id') or '-'}")
         print(f"   评分结论：{event.get('decision_status') or '-'}")
-        evidence = event.get("evidence") if isinstance(event.get("evidence"), dict) else {}
-        deep_crawl = evidence.get("deep_crawl") if isinstance(evidence, dict) else None
-        if deep_crawl:
-            platforms = deep_crawl.get("platforms", [])
-            summary = deep_crawl.get("summary", {})
-            print(f"   深爬增强：{len(platforms)} 个平台 → {summary.get('total_notes', '-')} 条笔记")
+        artifact_summary = event.get("artifact_summary") if isinstance(event.get("artifact_summary"), dict) else {}
+        successful_platforms = artifact_summary.get("deep_crawl_successful_platforms") or []
+        failed_platforms = artifact_summary.get("deep_crawl_failed_platforms") or []
+        deep_crawl_notes = artifact_summary.get("deep_crawl_total_notes")
+        if successful_platforms or failed_platforms or deep_crawl_notes:
+            print(
+                f"   深爬增强：成功平台 {', '.join(successful_platforms) or '无'}；"
+                f"失败平台 {', '.join(failed_platforms) or '无'}；"
+                f"{deep_crawl_notes or 0} 条笔记"
+            )
         print(f"   撰写状态：{event.get('write_status') or '-'}")
         print(f"   发布状态：{event.get('deliver_status') or '-'}")
         stage_reasons = event.get("stage_reasons") if isinstance(event.get("stage_reasons"), dict) else {}
@@ -361,8 +419,13 @@ def _print_pipeline_result(result: dict[str, Any]) -> None:
         dc_applied = run_summary.get("deep_crawl_applied")
         dc_platforms = run_summary.get("deep_crawl_platform_count", 0)
         dc_notes = run_summary.get("deep_crawl_notes_count", 0)
+        dc_successful_platforms = run_summary.get("deep_crawl_successful_platforms") or []
+        dc_failed_platforms = run_summary.get("deep_crawl_failed_platforms") or []
         if dc_applied:
-            _print_key_value("深爬增强", f"已启用 → {dc_platforms} 平台, {dc_notes} 条笔记")
+            _print_key_value(
+                "深爬增强",
+                f"已启用 → {dc_platforms} 平台, {dc_notes} 条笔记, 成功平台: {', '.join(dc_successful_platforms) or '无'}, 失败平台: {', '.join(dc_failed_platforms) or '无'}",
+            )
         else:
             dc_stage = stage_statuses.get("deep_crawl") if isinstance(stage_statuses, dict) else None
             dc_status = (dc_stage or {}).get("status", "") if isinstance(dc_stage, dict) else ""
@@ -540,6 +603,7 @@ def _collect_deep_crawl_args() -> dict | None:
 
     cdp_connect_existing = False
     cdp_headless = False
+    cdp_fallback_to_standard = False
     cdp_debug_port = int(default_remote_port)
     cdp_remote_host = default_remote_host
     cdp_custom_browser_path = ""
@@ -583,6 +647,15 @@ def _collect_deep_crawl_args() -> dict | None:
             ],
             default_index=1,
         )
+        cdp_fallback_to_standard = _prompt_menu(
+            "deep_crawl_cdp_fallback_to_standard",
+            "如果 CDP 连接或启动失败，是否自动回退到标准 Playwright 浏览器模式？正式部署默认不回退，直接暴露真实 CDP 错误。",
+            [
+                (False, "否", "默认。不中途切回标准模式，直接报出 CDP 失败。"),
+                (True, "是", "保留旧行为。CDP 失败后自动切回标准 Playwright 模式。"),
+            ],
+            default_index=1,
+        )
 
     login_type = _prompt_menu(
         "deep_crawl_login_type",
@@ -614,6 +687,7 @@ def _collect_deep_crawl_args() -> dict | None:
         "enable_cdp_mode": enable_cdp_mode,
         "cdp_connect_existing": cdp_connect_existing,
         "cdp_headless": cdp_headless,
+        "cdp_fallback_to_standard": cdp_fallback_to_standard,
         "cdp_debug_port": cdp_debug_port,
         "cdp_remote_host": cdp_remote_host,
         "cdp_custom_browser_path": cdp_custom_browser_path,
@@ -852,6 +926,7 @@ def _build_payload(args: argparse.Namespace) -> dict:
 # ─────────────── main ───────────────
 
 def main() -> None:
+    _ensure_utf8_console_streams()
     print("ClawRadar 交互式启动")
     print('说明：按提示输入序号即可；带"默认"的项目可直接回车。')
     publish_only = _prompt_menu("运行模式", "选择要执行的操作。", RUN_MODE_OPTIONS, default_index=1)

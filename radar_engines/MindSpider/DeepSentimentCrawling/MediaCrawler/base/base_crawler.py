@@ -22,6 +22,8 @@ from typing import Dict, Optional
 
 from playwright.async_api import BrowserContext, BrowserType, Playwright
 
+import config
+
 
 class AbstractCrawler(ABC):
 
@@ -60,7 +62,8 @@ class AbstractCrawler(ABC):
         :param headless: headless mode
         :return: browser context
         """
-        # Default implementation: fallback to standard mode
+        if not config.CDP_FALLBACK_TO_STANDARD:
+            raise RuntimeError("CDP launch_browser_with_cdp is not implemented for this crawler and fallback is disabled")
         return await self.launch_browser(playwright.chromium, playwright_proxy, user_agent, headless)
 
 

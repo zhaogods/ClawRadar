@@ -194,25 +194,42 @@ def _run_deep_sentiment_crawling(
             except Exception:
                 pass
 
-    # run_daily_crawling may return bool or {"success": bool, "error": str}
-    if isinstance(crawl_return, dict):
-        is_success = bool(crawl_return.get("success"))
-        error_msg = str(crawl_return.get("error") or "").strip()
-    else:
-        is_success = bool(crawl_return)
-        error_msg = "" if is_success else "crawling returned False"
+    # run_daily_crawling may return bool or {"success": bool, "error": str, ...}
+    crawl_report = crawl_return if isinstance(crawl_return, dict) else {}
+    crawl_results = crawl_report.get("crawl_results") if isinstance(crawl_report.get("crawl_results"), dict) else {}
+    platform_summary = crawl_results.get("platform_summary") if isinstance(crawl_results.get("platform_summary"), dict) else {}
 
-    summary = crawler.get_crawl_summary() if hasattr(crawler, "get_crawl_summary") else {}
+    successful_platforms: List[str] = []
+    failed_platforms: List[str] = []
+    for platform in list(platforms):
+        stats = platform_summary.get(platform) if isinstance(platform_summary, dict) else None
+        successful_keywords = int((stats or {}).get("successful_keywords", 0) or 0) if isinstance(stats, dict) else 0
+        total_notes = int((stats or {}).get("total_notes", 0) or 0) if isinstance(stats, dict) else 0
+        if successful_keywords > 0 and total_notes > 0:
+            successful_platforms.append(platform)
+        else:
+            failed_platforms.append(platform)
+
+    total_notes = int(crawl_results.get("total_notes", 0) or 0) if isinstance(crawl_results, dict) else 0
+    is_success = bool(successful_platforms and total_notes > 0)
+    error_msg = str(crawl_report.get("error") or "").strip() if isinstance(crawl_report, dict) else ""
+    if not is_success and not error_msg:
+        error_msg = "deep crawl produced no usable content"
+
     return {
         "success": is_success,
         "error": error_msg if not is_success else None,
         "platforms_attempted": list(platforms),
+        "successful_platforms": successful_platforms,
+        "failed_platforms": failed_platforms,
+        "platform_summary": deepcopy(platform_summary) if isinstance(platform_summary, dict) else {},
         "params": {
             "max_keywords": max_keywords,
             "max_notes": max_notes,
             "test_mode": test_mode,
         },
-        "summary": summary,
+        "summary": deepcopy(crawl_results) if isinstance(crawl_results, dict) else {},
+        "keyword_summary": deepcopy(crawl_report.get("summary")) if isinstance(crawl_report.get("summary"), dict) else {},
     }
 
 

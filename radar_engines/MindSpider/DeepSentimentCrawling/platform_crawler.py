@@ -395,9 +395,10 @@ postgres_db_config = {{
             cdp_debug_port = _env_int("CLAWRADAR_CDP_DEBUG_PORT", 9222)
             cdp_remote_host = _env_str("CLAWRADAR_CDP_REMOTE_HOST", "127.0.0.1")
             cdp_custom_browser_path = _env_str("CLAWRADAR_CDP_CUSTOM_BROWSER_PATH", "")
+            cdp_fallback_to_standard = _env_bool("CLAWRADAR_CDP_FALLBACK_TO_STANDARD", True)
 
             logger.info(
-                "CDP配置: enable=%s, connect_existing=%s, headless=%s, debug_port=%s, remote_host=%s, browser_path=%s"
+                "CDP配置: enable=%s, connect_existing=%s, headless=%s, debug_port=%s, remote_host=%s, browser_path=%s, fallback_to_standard=%s"
                 % (
                     enable_cdp_mode,
                     cdp_connect_existing,
@@ -405,6 +406,7 @@ postgres_db_config = {{
                     cdp_debug_port,
                     cdp_remote_host,
                     cdp_custom_browser_path or "auto-detect",
+                    cdp_fallback_to_standard,
                 )
             )
             lines = content.split('\n')
@@ -443,6 +445,8 @@ postgres_db_config = {{
                     replaced = f'CDP_CONNECT_EXISTING = {cdp_connect_existing}'
                 elif line.startswith('CDP_HEADLESS = '):
                     replaced = f'CDP_HEADLESS = {cdp_headless}'
+                elif line.startswith('CDP_FALLBACK_TO_STANDARD = '):
+                    replaced = f'CDP_FALLBACK_TO_STANDARD = {cdp_fallback_to_standard}'
                 elif line.startswith('CDP_DEBUG_PORT = '):
                     replaced = f'CDP_DEBUG_PORT = {cdp_debug_port}'
                 elif line.startswith('CUSTOM_BROWSER_PATH = '):
@@ -462,7 +466,9 @@ postgres_db_config = {{
             with open(base_config_path, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(new_lines))
             
-            logger.info(f"已配置 {platform} 平台，爬取类型: {crawler_type}，关键词数量: {len(keywords)}，最大爬取数量: {max_notes}，保存数据方式: {save_data_option}")
+            logger.info(
+                f"已配置 {platform} 平台，爬取类型: {crawler_type}，关键词数量: {len(keywords)}，最大爬取数量: {max_notes}，保存数据方式: {save_data_option}，CDP回退: {cdp_fallback_to_standard}"
+            )
             return True
             
         except Exception as e:

@@ -910,6 +910,18 @@ def _build_stage_statuses(
                     deep_crawl_result.get("platforms_attempted", [])
                     if isinstance(deep_crawl_result, dict) else []
                 ),
+                "successful_platforms": (
+                    deep_crawl_result.get("successful_platforms", [])
+                    if isinstance(deep_crawl_result, dict) else []
+                ),
+                "failed_platforms": (
+                    deep_crawl_result.get("failed_platforms", [])
+                    if isinstance(deep_crawl_result, dict) else []
+                ),
+                "platform_summary": (
+                    deepcopy(deep_crawl_result.get("platform_summary") or {})
+                    if isinstance(deep_crawl_result, dict) else {}
+                ),
                 "total_notes": (
                     (deep_crawl_result.get("summary") or {}).get("total_notes", 0)
                     if isinstance(deep_crawl_result, dict) else 0
@@ -1018,6 +1030,9 @@ def _build_event_statuses(
                     "fact_points": 0,
                     "has_content_bundle": False,
                     "delivery_receipt_status": None,
+                    "deep_crawl_successful_platforms": [],
+                    "deep_crawl_failed_platforms": [],
+                    "deep_crawl_total_notes": 0,
                 },
                 "errors": [],
             }
@@ -1167,9 +1182,15 @@ def _build_event_statuses(
         dc_success = deep_crawl_result.get("success") is True
         dc_error = str(deep_crawl_result.get("error") or "").strip()
         dc_status = OrchestratorStageStatus.SUCCEEDED.value if dc_success else OrchestratorStageStatus.FAILED.value
+        successful_platforms = list(deep_crawl_result.get("successful_platforms") or [])
+        failed_platforms = list(deep_crawl_result.get("failed_platforms") or [])
+        total_notes = int((deep_crawl_result.get("summary") or {}).get("total_notes", 0) or 0)
         dc_reason = None if dc_success else (dc_error or "deep_crawl failed")
         for entry in event_index.values():
             entry["deep_crawl_status"] = dc_status
+            entry["artifact_summary"]["deep_crawl_successful_platforms"] = successful_platforms
+            entry["artifact_summary"]["deep_crawl_failed_platforms"] = failed_platforms
+            entry["artifact_summary"]["deep_crawl_total_notes"] = total_notes
             note(entry, "deep_crawl", dc_reason)
     elif skipped_reasons.get("deep_crawl"):
         for entry in event_index.values():
@@ -1509,6 +1530,18 @@ def _finalize_orchestration(
         "deep_crawl_platform_count": len(
             resolved_deep_crawl.get("platforms_attempted", [])
         ) if isinstance(resolved_deep_crawl, dict) else 0,
+        "deep_crawl_successful_platform_count": len(
+            resolved_deep_crawl.get("successful_platforms", [])
+        ) if isinstance(resolved_deep_crawl, dict) else 0,
+        "deep_crawl_failed_platform_count": len(
+            resolved_deep_crawl.get("failed_platforms", [])
+        ) if isinstance(resolved_deep_crawl, dict) else 0,
+        "deep_crawl_successful_platforms": list(
+            resolved_deep_crawl.get("successful_platforms", [])
+        ) if isinstance(resolved_deep_crawl, dict) else [],
+        "deep_crawl_failed_platforms": list(
+            resolved_deep_crawl.get("failed_platforms", [])
+        ) if isinstance(resolved_deep_crawl, dict) else [],
         "deep_crawl_notes_count": (
             (resolved_deep_crawl.get("summary") or {}).get("total_notes", 0)
             if isinstance(resolved_deep_crawl, dict) else 0
@@ -2341,6 +2374,17 @@ def topic_radar_orchestrate(
                     login_type=entry_resolution["deep_crawl"]["login_type"],
                     server_mode=entry_resolution["deep_crawl"]["server_mode"],
                 )
+                if isinstance(deep_crawl_result, dict):
+                    successful_platforms = ", ".join(deep_crawl_result.get("successful_platforms") or []) or "无"
+                    failed_platforms = ", ".join(deep_crawl_result.get("failed_platforms") or []) or "无"
+                    total_notes = int((deep_crawl_result.get("summary") or {}).get("total_notes", 0) or 0)
+                    _logger.info(
+                        "deep_crawl result: success=%s total_notes=%s successful_platforms=[%s] failed_platforms=[%s]",
+                        deep_crawl_result.get("success"),
+                        total_notes,
+                        successful_platforms,
+                        failed_platforms,
+                    )
                 # Inject deep crawl evidence into eligible scored events
                 if deep_crawl_result.get("success"):
                     for event in deep_crawl_eligible_events:
@@ -2348,6 +2392,9 @@ def topic_radar_orchestrate(
                         evidence["deep_crawl"] = {
                             "source": "mindspider_deep_sentiment",
                             "platforms": deep_crawl_result.get("platforms_attempted", []),
+                            "successful_platforms": deep_crawl_result.get("successful_platforms", []),
+                            "failed_platforms": deep_crawl_result.get("failed_platforms", []),
+                            "platform_summary": deepcopy(deep_crawl_result.get("platform_summary") or {}),
                             "summary": deep_crawl_result.get("summary", {}),
                         }
                         event["evidence_overview"] = evidence
