@@ -243,6 +243,7 @@ def _apply_deep_crawl_env(dc_config: dict) -> None:
         "cdp_remote_host": "CLAWRADAR_CDP_REMOTE_HOST",
         "cdp_custom_browser_path": "CLAWRADAR_CDP_CUSTOM_BROWSER_PATH",
         "cdp_fallback_to_standard": "CLAWRADAR_CDP_FALLBACK_TO_STANDARD",
+        "browser_data_dir": "MEDIACRAWLER_BROWSER_DATA_DIR",
     }
 
     for config_key, env_name in env_mappings.items():
@@ -657,6 +658,12 @@ def _collect_deep_crawl_args() -> dict | None:
             default_index=1,
         )
 
+    browser_data_dir = _prompt_text(
+        "deep_crawl_browser_data_dir",
+        "浏览器 profile 数据目录；留空时使用 MediaCrawler 项目根下的 browser_data。远程 CDP 场景可指定与 Chrome 启动目录一致的路径。",
+        default=os.environ.get("MEDIACRAWLER_BROWSER_DATA_DIR", ""),
+    )
+
     login_type = _prompt_menu(
         "deep_crawl_login_type",
         "选择社媒平台登录方式。",
@@ -691,6 +698,7 @@ def _collect_deep_crawl_args() -> dict | None:
         "cdp_debug_port": cdp_debug_port,
         "cdp_remote_host": cdp_remote_host,
         "cdp_custom_browser_path": cdp_custom_browser_path,
+        "browser_data_dir": browser_data_dir,
     }
 
 
