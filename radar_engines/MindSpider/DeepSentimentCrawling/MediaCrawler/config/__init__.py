@@ -17,6 +17,17 @@
 # 详细许可条款请参阅项目根目录下的LICENSE文件。
 # 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
 
+import os
+from pathlib import Path as _Path
 
 from .base_config import *
 from .db_config import *
+
+# 浏览器 profile 数据根目录（固定路径，不依赖 os.getcwd()）
+# 优先读取环境变量 MEDIACRAWLER_BROWSER_DATA_DIR，未设置时锚定在项目根目录下
+# 远程 Windows CDP 场景下，可设置此环境变量与 Chrome 启动目录对齐
+_MEDIACRAWLER_ROOT = _Path(__file__).resolve().parent.parent
+BROWSER_DATA_BASE = os.environ.get(
+    "MEDIACRAWLER_BROWSER_DATA_DIR",
+    str(_MEDIACRAWLER_ROOT / "browser_data"),
+)

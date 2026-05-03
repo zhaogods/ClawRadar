@@ -260,8 +260,7 @@ class CDPBrowserManager:
         user_data_dir = None
         if config.SAVE_LOGIN_STATE:
             user_data_dir = os.path.join(
-                os.getcwd(),
-                "browser_data",
+                config.BROWSER_DATA_BASE,
                 f"cdp_{config.USER_DATA_DIR % config.PLATFORM}",
             )
             os.makedirs(user_data_dir, exist_ok=True)
